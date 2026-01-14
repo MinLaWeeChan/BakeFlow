@@ -10,6 +10,7 @@ export default function ProductFormPage() {
   const router = useRouter();
   const { id } = router.query;
   const isEdit = id && id !== 'new';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -27,6 +28,10 @@ export default function ProductFormPage() {
     status: 'draft'
   });
 
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
@@ -38,7 +43,7 @@ export default function ProductFormPage() {
   const fetchProduct = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`http://localhost:8080/api/products/${id}`);
+      const res = await fetch(`${API_BASE}/api/products/${id}`);
       const data = await res.json();
       if (data.product) {
         setForm({
@@ -50,6 +55,11 @@ export default function ProductFormPage() {
           image_url: data.product.image_url || '',
           status: data.product.status || 'draft'
         });
+        if (data.product.image_url) {
+          setPreviewUrl(data.product.image_url);
+        } else {
+          setPreviewUrl('');
+        }
       }
     } catch (e) {
       showNotification('Failed to load product', 'danger');
@@ -82,16 +92,38 @@ export default function ProductFormPage() {
     setSaving(true);
     try {
       const url = isEdit 
-        ? `http://localhost:8080/api/products/${id}`
-        : `http://localhost:8080/api/products`;
+        ? `${API_BASE}/api/products/${id}`
+        : `${API_BASE}/api/products`;
       
       const method = isEdit ? 'PUT' : 'POST';
+
+      // Upload new image if a file was selected
+      let imageUrl = form.image_url || '';
+      if (file) {
+        try {
+          setUploading(true);
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('folder', 'bakeflow/products');
+          const up = await fetch(`${API_BASE}/api/uploads/cloudinary`, { method: 'POST', body: formData });
+          const upData = await up.json();
+          if (!up.ok) throw new Error(upData?.error || 'Upload failed');
+          imageUrl = upData.url;
+        } catch (err) {
+          showNotification(`Image upload failed: ${err.message}`, 'danger');
+          setUploading(false);
+          setSaving(false);
+          return;
+        }
+        setUploading(false);
+      }
       
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
+          image_url: imageUrl,
           price: parseFloat(form.price),
           stock: parseInt(form.stock)
         })
@@ -259,18 +291,22 @@ export default function ProductFormPage() {
 
                           {/* Image URL */}
                           <div className="mb-3">
-                            <label className="form-label fw-semibold">Image URL</label>
+                            <label className="form-label fw-semibold">Image</label>
                             <input
-                              type="url"
+                              type="file"
+                              accept="image/*"
                               className="form-control"
-                              value={form.image_url}
-                              onChange={(e) => setForm({...form, image_url: e.target.value})}
-                              placeholder="https://example.com/image.jpg"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0] || null;
+                                setFile(f);
+                                if (f) setPreviewUrl(URL.createObjectURL(f));
+                                else setPreviewUrl(form.image_url || '');
+                              }}
                             />
-                            {form.image_url && (
+                            {previewUrl && (
                               <div className="mt-2">
                                 <img 
-                                  src={form.image_url} 
+                                  src={previewUrl} 
                                   alt="Preview" 
                                   style={{maxWidth: 200, maxHeight: 200, borderRadius: 8}}
                                   onError={(e) => e.target.style.display = 'none'}

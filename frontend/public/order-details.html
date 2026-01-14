@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Order details</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    *{box-sizing:border-box}
+    :root{
+      --brand:#2b6bf3;
+      --bg:#fff;
+      --text:#111827;
+      --muted:#6b7280;
+      --divider:#eef2f7;
+      --card:#ffffff;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;
+      background:#f7f8fc;
+      color:var(--text);
+      padding-bottom:calc(96px + var(--safe-bottom));
+    }
+    .container{max-width:520px;margin:0 auto;padding:16px 12px 0}
+    .header{position:sticky;top:0;background:#f7f8fc;z-index:20;padding:10px 0 6px}
+    .header-row{display:flex;align-items:center;justify-content:space-between}
+    .title{font-weight:800;font-size:18px}
+    .icon-btn{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--divider);border-radius:12px;background:#fff;color:var(--text);font-weight:700}
+    .section{background:var(--card);border-radius:14px;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:12px;margin:10px 0}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .muted{color:var(--muted);font-size:13px}
+    .pill-row{display:flex;gap:8px;margin-top:8px}
+    .pill{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:1px solid var(--divider);border-radius:999px;background:#fff;font-weight:800}
+    .divider{height:1px;background:var(--divider);margin:8px 0}
+    /* Items */
+    .item{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
+    .item-left{display:flex;align-items:center;gap:10px}
+    .qty{min-width:28px;height:28px;border-radius:999px;background:#f1f4fa;color:var(--brand);font-weight:800;display:flex;align-items:center;justify-content:center}
+    .item-name{font-weight:700}
+    .item-price{font-weight:800}
+    /* Sticky Reorder */
+    .reorder-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--divider);padding:10px 12px calc(10px + var(--safe-bottom));}
+    .reorder-btn{width:100%;height:56px;border:none;border-radius:14px;background:var(--brand);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="header-row">
+        <button class="icon-btn" id="backBtn"><i data-lucide="arrow-left"></i><span>Back</span></button>
+        <div class="title">Order details</div>
+        <a class="icon-btn" id="contactBtn"><i data-lucide="phone"></i><span>Contact</span></a>
+      </div>
+    </header>
+
+    <!-- Order info -->
+    <section class="section">
+      <div class="row">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="item-name">Order #<span id="orderId">—</span></span>
+            <button id="copyId" class="icon-btn" style="padding:6px 8px;border-radius:10px"><i data-lucide="copy"></i><span style="font-weight:700;font-size:13px">Copy</span></button>
+          </div>
+          <div class="muted" id="storeName">Store —</div>
+        </div>
+        <div class="muted" id="orderDate">—</div>
+      </div>
+    </section>
+
+    <!-- Quick actions -->
+    <section class="section">
+      <div class="pill-row">
+        <button class="pill" id="callBtn"><i data-lucide="phone"></i><span>Call</span></button>
+        <button class="pill" id="rateBtn"><i data-lucide="star"></i><span>Rate</span></button>
+      </div>
+    </section>
+
+    <!-- Delivery -->
+    <section class="section">
+      <div class="row">
+        <div>
+          <div style="font-weight:800" id="deliveryStatus">On the way</div>
+          <div class="muted" id="deliveryMsg">Estimated arrival soon</div>
+        </div>
+        <button class="icon-btn" id="rateDelivery"><i data-lucide="thumbs-up"></i><span>Rate</span></button>
+      </div>
+      <div class="divider"></div>
+      <div class="row">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <i data-lucide="hand-coins"></i>
+          <div>
+            <div style="font-weight:700">Add tip</div>
+            <div class="muted">Support the courier</div>
+          </div>
+        </div>
+        <button class="icon-btn" id="addTip"><i data-lucide="plus"></i><span>Add</span></button>
+      </div>
+    </section>
+
+    <!-- Customer info -->
+    <section class="section">
+      <div style="font-weight:800;margin-bottom:6px">Customer</div>
+      <div class="row"><div id="custName">—</div><div class="muted" id="custPhone">—</div></div>
+      <div class="divider"></div>
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <i data-lucide="map-pin"></i>
+        <div>
+          <div id="custAddress">—</div>
+          <div class="muted" id="custNote"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Items -->
+    <section class="section">
+      <div style="font-weight:800;margin-bottom:6px">Items</div>
+      <div id="items"></div>
+    </section>
+
+  </div>
+
+  <!-- Sticky reorder -->
+  <div class="reorder-bar">
+    <button class="reorder-btn" id="reorderBtn"><i data-lucide="refresh-cw"></i><span>Reorder</span></button>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const orderId = qs.get('order_id') || '—';
+    const userId = qs.get('user_id') || 'guest';
+    const contactPhone = qs.get('store_phone') || '';
+    const storeName = qs.get('store_name') || 'BakeFlow Bakery';
+
+    // Populate header actions
+    document.getElementById('orderId').textContent = orderId;
+    document.getElementById('storeName').textContent = storeName;
+    document.getElementById('contactBtn').href = contactPhone ? ('tel:' + contactPhone) : '#';
+
+    // Copy order id
+    document.getElementById('copyId').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(String(orderId)); alert('Order number copied'); } catch(e){ alert('Copy failed'); }
+    });
+    document.getElementById('backBtn').addEventListener('click', () => history.back());
+    document.getElementById('callBtn').addEventListener('click', () => { if (contactPhone) location.href = 'tel:' + contactPhone; });
+    document.getElementById('rateBtn').addEventListener('click', () => alert('Thanks for your feedback!'));
+    document.getElementById('rateDelivery').addEventListener('click', () => alert('Delivery rated.'));
+    document.getElementById('addTip').addEventListener('click', () => alert('Tip added.'));
+
+    // Load order details
+    async function loadDetails(){
+      let data = null;
+      try {
+        const res = await fetch('/api/orders/' + encodeURIComponent(orderId));
+        if (res.ok) data = await res.json();
+      } catch(e) { /* ignore */ }
+      if (!data || !data.items){
+        // fallback sample
+        data = {
+          created_at: new Date().toISOString(),
+          customer_name: qs.get('customer_name') || 'Customer',
+          customer_phone: qs.get('customer_phone') || '',
+          address: qs.get('address') || 'Pickup at store',
+          notes: qs.get('notes') || '',
+          items: [
+            { name:'Chocolate Cake', qty:1, price:25.99 },
+            { name:'Vanilla Cupcake', qty:6, price:3.99 }
+          ]
+        };
+      }
+      renderDetails(data);
+    }
+
+    function renderDetails(d){
+      const dt = new Date(d.created_at || Date.now());
+      document.getElementById('orderDate').textContent = dt.toLocaleString();
+      document.getElementById('custName').textContent = d.customer_name || '—';
+      document.getElementById('custPhone').textContent = d.customer_phone || '—';
+      document.getElementById('custAddress').textContent = d.address || '—';
+      document.getElementById('custNote').textContent = d.notes ? ('Note: ' + d.notes) : '';
+      const itemsWrap = document.getElementById('items');
+      const rows = (d.items || []).map(it => `
+        <div class="item">
+          <div class="item-left">
+            <div class="qty">${it.qty}</div>
+            <div class="item-name">${it.name}</div>
+          </div>
+          <div class="item-price">$${Number(it.price).toFixed(2)}</div>
+        </div>
+        <div class="divider"></div>
+      `).join('');
+      itemsWrap.innerHTML = rows;
+      if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    }
+
+    // Reorder: save template and open order form with autoload
+    document.getElementById('reorderBtn').addEventListener('click', () => {
+      try {
+        const key = `saved_orders_${userId}`;
+        const list = JSON.parse(localStorage.getItem(key) || '[]');
+        const items = Array.from(document.querySelectorAll('#items .item')).map(row => {
+          const qty = Number(row.querySelector('.qty').textContent.trim());
+          const name = row.querySelector('.item-name').textContent.trim();
+          const priceText = row.nextElementSibling ? row.nextElementSibling.previousElementSibling : row; // just safe
+          return { name, qty };
+        });
+        const payload = { name: `Reorder #${orderId}`, items, created_at: new Date().toISOString() };
+        list.unshift(payload);
+        localStorage.setItem(key, JSON.stringify(list));
+      } catch(e) {}
+      const url = `/order-form.html?user_id=${encodeURIComponent(userId)}&reorder=1`;
+      location.href = url;
+    });
+
+    loadDetails();
+  </script>
+</body>
+</html>

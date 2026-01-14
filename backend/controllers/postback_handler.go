@@ -315,6 +315,15 @@ func handlePostback(userID, payload string) {
 			}
 		}
 
+		// Quick add by product ID (dynamic)
+		if strings.HasPrefix(payload, "QUICK_ADD_PRODUCT_") {
+			idStr := strings.TrimPrefix(payload, "QUICK_ADD_PRODUCT_")
+			if pid, err := strconv.Atoi(idStr); err == nil {
+				handleQuickAddProductByID(userID, pid)
+				return
+			}
+		}
+
 		// Quick add/view from webview
 		if strings.HasPrefix(payload, "QUICK_ADD_") {
 			productKey := strings.TrimPrefix(payload, "QUICK_ADD_")

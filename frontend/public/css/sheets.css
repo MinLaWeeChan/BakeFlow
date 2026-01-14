@@ -1,0 +1,246 @@
+/**
+ * BakeFlow - Bottom Sheet Component
+ * Modal sheets with gentle animations
+ */
+
+/* ========== Sheet Backdrop ========== */
+.sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 23, 20, 0.25);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: none;
+    opacity: 0;
+    transition: opacity var(--transition);
+    z-index: 200;
+}
+
+.sheet-backdrop.active {
+    display: block;
+    opacity: 1;
+}
+
+/* ========== Sheet Container ========== */
+.sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: none;
+    z-index: 201;
+}
+
+.sheet.active {
+    display: block;
+}
+
+/* ========== Sheet Box ========== */
+.sheet-box {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    background: var(--warm-white);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    box-shadow: 0 -8px 40px rgba(26, 23, 20, 0.15);
+    padding: var(--space-lg);
+    padding-bottom: calc(var(--space-lg) + var(--safe-area-bottom));
+    transform: translateY(100%);
+    transition: transform var(--transition-slow) cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.sheet.active .sheet-box {
+    transform: translateY(0);
+}
+
+/* ========== Sheet Handle ========== */
+.sheet-handle {
+    width: 36px;
+    height: 4px;
+    background: var(--gray-300);
+    border-radius: var(--radius-full);
+    margin: 0 auto var(--space-md);
+}
+
+/* ========== Sheet Title ========== */
+.sheet-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--gray-900);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: var(--space-md);
+}
+
+.sheet-title svg {
+    width: 20px;
+    height: 20px;
+    color: var(--primary);
+}
+
+/* ========== Sheet Content ========== */
+.sheet-content {
+    margin-bottom: var(--space-md);
+}
+
+.sheet-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-600);
+    margin-bottom: 8px;
+    display: block;
+}
+
+/* ========== Sheet Row ========== */
+.sheet-row {
+    display: flex;
+    gap: 8px;
+    margin-top: var(--space-md);
+}
+
+/* ========== Sheet Buttons ========== */
+.sheet-btn {
+    flex: 1;
+    height: 48px;
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-200);
+    background: var(--warm-white);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--gray-700);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.sheet-btn:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-300);
+}
+
+.sheet-btn:active {
+    transform: scale(0.98);
+}
+
+.sheet-btn.primary {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+    box-shadow: var(--shadow-sm);
+}
+
+.sheet-btn.primary:hover {
+    background: var(--primary-hover);
+}
+
+.sheet-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ========== Hint Text ========== */
+.hint {
+    font-size: 12px;
+    color: var(--gray-500);
+    margin-top: 6px;
+    line-height: 1.4;
+}
+
+/* ========== Character Count ========== */
+.count {
+    font-size: 12px;
+    color: var(--gray-400);
+    text-align: right;
+    margin-top: 4px;
+}
+
+/* ========== Tag Chips ========== */
+.tag-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tag-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 16px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--gray-200);
+    background: var(--warm-white);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-600);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: all var(--transition-fast);
+}
+
+.tag-chip:hover {
+    border-color: var(--gray-300);
+    background: var(--gray-50);
+}
+
+.tag-chip.selected {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.tag-chip.selected[data-tag="work"] {
+    border-color: var(--warning);
+    background: var(--warning-light);
+    color: #92400e;
+}
+
+.tag-chip.selected[data-tag="event"] {
+    border-color: #8b5cf6;
+    background: #f5f3ff;
+    color: #7c3aed;
+}
+
+.tag-chip svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ========== Day Selector ========== */
+.day-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.day-chip {
+    padding: 10px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-full);
+    background: var(--warm-white);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.day-chip:hover {
+    background: var(--gray-50);
+}
+
+.day-chip input {
+    display: none;
+}
+
+.day-chip:has(input:checked) {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}

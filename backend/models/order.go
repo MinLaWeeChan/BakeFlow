@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"log"
+	"strings"
 	"time"
 
 	"bakeflow/configs"
@@ -14,13 +15,15 @@ type Order struct {
 	DeliveryType  string      `json:"delivery_type"` // "pickup" or "delivery"
 	Address       string      `json:"address"`
 	Status        string      `json:"status"`
+	ScheduledFor  *time.Time  `json:"scheduled_for,omitempty"`
+	ScheduleType  string      `json:"schedule_type,omitempty"`
 	TotalItems    int         `json:"total_items"`
 	Subtotal      float64     `json:"subtotal"`
 	DeliveryFee   float64     `json:"delivery_fee"`
 	TotalAmount   float64     `json:"total_amount"`
 	ReorderedFrom *int        `json:"reordered_from,omitempty"`
 	RatingID      *int        `json:"rating_id,omitempty"`
-	SenderID     string      `json:"sender_id,omitempty"`
+	SenderID      string      `json:"sender_id,omitempty"`
 	CreatedAt     time.Time   `json:"created_at"`
 	CompletedAt   *time.Time  `json:"completed_at,omitempty"`
 	Items         []OrderItem `json:"items,omitempty"` // For including items in responses
@@ -48,7 +51,18 @@ type Rating struct {
 
 func GetAllOrders() ([]Order, error) {
 	log.Println("🔍 Querying orders table...")
-	rows, err := configs.DB.Query(`
+	queryWithSchedule := `
+		SELECT id, customer_name,
+		       COALESCE(delivery_type, 'pickup') as delivery_type,
+		       COALESCE(address, '') as address,
+		       status, scheduled_for, COALESCE(schedule_type, '') as schedule_type, total_items,
+		       COALESCE(subtotal, 0), COALESCE(delivery_fee, 0), COALESCE(total_amount, 0),
+		       reordered_from, rating_id, COALESCE(sender_id, '') as sender_id, created_at, completed_at
+		FROM orders
+		ORDER BY id DESC
+	`
+
+	queryLegacy := `
 		SELECT id, customer_name,
 		       COALESCE(delivery_type, 'pickup') as delivery_type,
 		       COALESCE(address, '') as address,
@@ -57,10 +71,19 @@ func GetAllOrders() ([]Order, error) {
 		       reordered_from, rating_id, COALESCE(sender_id, '') as sender_id, created_at, completed_at
 		FROM orders
 		ORDER BY id DESC
-	`)
+	`
+
+	rows, err := configs.DB.Query(queryWithSchedule)
 	if err != nil {
-		log.Printf("❌ Query failed: %v", err)
-		return nil, err
+		// Backwards compatible fallback if scheduling columns aren't migrated yet.
+		msg := err.Error()
+		if strings.Contains(msg, "scheduled_for") || strings.Contains(msg, "schedule_type") {
+			rows, err = configs.DB.Query(queryLegacy)
+		}
+		if err != nil {
+			log.Printf("❌ Query failed: %v", err)
+			return nil, err
+		}
 	}
 	defer rows.Close()
 
@@ -68,22 +91,49 @@ func GetAllOrders() ([]Order, error) {
 	var orders []Order
 	for rows.Next() {
 		var o Order
-		err := rows.Scan(&o.ID, &o.CustomerName, &o.DeliveryType, &o.Address, &o.Status, &o.TotalItems,
-			&o.Subtotal, &o.DeliveryFee, &o.TotalAmount, &o.ReorderedFrom, &o.RatingID, &o.SenderID, &o.CreatedAt, &o.CompletedAt)
+		var completedAt sql.NullTime
+		var scheduledFor sql.NullTime
+		var scheduleType sql.NullString
+		err := rows.Scan(
+			&o.ID, &o.CustomerName, &o.DeliveryType, &o.Address, &o.Status,
+			&scheduledFor, &scheduleType,
+			&o.TotalItems,
+			&o.Subtotal, &o.DeliveryFee, &o.TotalAmount,
+			&o.ReorderedFrom, &o.RatingID, &o.SenderID, &o.CreatedAt, &completedAt,
+		)
 		if err != nil {
-			log.Printf("❌ Scan error: %v", err)
-			return nil, err
+			// Legacy scan fallback when using legacy query.
+			// (scheduled_for/schedule_type are absent)
+			err2 := rows.Scan(
+				&o.ID, &o.CustomerName, &o.DeliveryType, &o.Address, &o.Status,
+				&o.TotalItems,
+				&o.Subtotal, &o.DeliveryFee, &o.TotalAmount,
+				&o.ReorderedFrom, &o.RatingID, &o.SenderID, &o.CreatedAt, &completedAt,
+			)
+			if err2 != nil {
+				log.Printf("❌ Scan error: %v", err2)
+				return nil, err2
+			}
 		}
-		
+		if completedAt.Valid {
+			o.CompletedAt = &completedAt.Time
+		}
+		if scheduledFor.Valid {
+			o.ScheduledFor = &scheduledFor.Time
+		}
+		if scheduleType.Valid {
+			o.ScheduleType = scheduleType.String
+		}
+
 		// Load items for this order
 		items, err := GetOrderItems(o.ID)
 		if err == nil {
 			o.Items = items
 		}
-		
+
 		orders = append(orders, o)
 	}
-	
+
 	log.Printf("📦 Loaded %d orders", len(orders))
 
 	return orders, nil
@@ -147,7 +197,7 @@ func CreateOrder(o *Order, items []OrderItem) error {
 		INSERT INTO order_items (order_id, product, quantity, price, created_at)
 		VALUES ($1, $2, $3, $4, NOW())
 	`
-	
+
 	for _, item := range items {
 		_, err = tx.Exec(itemQuery, o.ID, item.Product, item.Quantity, item.Price)
 		if err != nil {
@@ -169,26 +219,48 @@ func GetUserOrders(userID string) ([]Order, error) {
 // GetOrderByID returns a single order with its items
 func GetOrderByID(orderID int) (*Order, error) {
 	var o Order
-	query := `
+	queryWithSchedule := `
+		SELECT id, customer_name, delivery_type, address, status, scheduled_for, COALESCE(schedule_type, ''), total_items,
+		       COALESCE(subtotal, 0), COALESCE(delivery_fee, 0), COALESCE(total_amount, 0),
+		       reordered_from, rating_id, COALESCE(sender_id, ''), created_at, completed_at
+		FROM orders
+		WHERE id = $1
+	`
+	queryLegacy := `
 		SELECT id, customer_name, delivery_type, address, status, total_items,
 		       COALESCE(subtotal, 0), COALESCE(delivery_fee, 0), COALESCE(total_amount, 0),
 		       reordered_from, rating_id, COALESCE(sender_id, ''), created_at, completed_at
 		FROM orders
 		WHERE id = $1
 	`
-	
+
 	var reorderedFrom, ratingID sql.NullInt64
 	var completedAt sql.NullTime
-	
-	err := configs.DB.QueryRow(query, orderID).Scan(
-		&o.ID, &o.CustomerName, &o.DeliveryType, &o.Address, &o.Status, &o.TotalItems,
-		&o.Subtotal, &o.DeliveryFee, &o.TotalAmount, &reorderedFrom, &ratingID, &o.SenderID,
+	var scheduledFor sql.NullTime
+	var scheduleType sql.NullString
+
+	err := configs.DB.QueryRow(queryWithSchedule, orderID).Scan(
+		&o.ID, &o.CustomerName, &o.DeliveryType, &o.Address, &o.Status,
+		&scheduledFor, &scheduleType,
+		&o.TotalItems,
+		&o.Subtotal, &o.DeliveryFee, &o.TotalAmount,
+		&reorderedFrom, &ratingID, &o.SenderID,
 		&o.CreatedAt, &completedAt,
 	)
 	if err != nil {
+		msg := err.Error()
+		if strings.Contains(msg, "scheduled_for") || strings.Contains(msg, "schedule_type") {
+			err = configs.DB.QueryRow(queryLegacy, orderID).Scan(
+				&o.ID, &o.CustomerName, &o.DeliveryType, &o.Address, &o.Status, &o.TotalItems,
+				&o.Subtotal, &o.DeliveryFee, &o.TotalAmount, &reorderedFrom, &ratingID, &o.SenderID,
+				&o.CreatedAt, &completedAt,
+			)
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
-	
+
 	// Handle nullable fields
 	if reorderedFrom.Valid {
 		val := int(reorderedFrom.Int64)
@@ -201,13 +273,19 @@ func GetOrderByID(orderID int) (*Order, error) {
 	if completedAt.Valid {
 		o.CompletedAt = &completedAt.Time
 	}
-	
+	if scheduledFor.Valid {
+		o.ScheduledFor = &scheduledFor.Time
+	}
+	if scheduleType.Valid {
+		o.ScheduleType = scheduleType.String
+	}
+
 	// Load items
 	items, err := GetOrderItems(o.ID)
 	if err == nil {
 		o.Items = items
 	}
-	
+
 	return &o, nil
 }
 
@@ -216,13 +294,13 @@ func CreateRating(r *Rating) error {
 	if configs.DB == nil {
 		return sql.ErrConnDone
 	}
-	
+
 	query := `
 		INSERT INTO ratings (order_id, user_id, stars, comment, created_at)
 		VALUES ($1, $2, $3, $4, NOW())
 		RETURNING id, created_at
 	`
-	
+
 	return configs.DB.QueryRow(query, r.OrderID, r.UserID, r.Stars, r.Comment).Scan(&r.ID, &r.CreatedAt)
 }
 
@@ -234,12 +312,12 @@ func GetRatingByOrderID(orderID int) (*Rating, error) {
 		FROM ratings
 		WHERE order_id = $1
 	`
-	
+
 	err := configs.DB.QueryRow(query, orderID).Scan(&r.ID, &r.OrderID, &r.UserID, &r.Stars, &r.Comment, &r.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &r, nil
 }
 
@@ -248,11 +326,8 @@ func UpdateOrderStatus(orderID int, newStatus string) error {
 	if configs.DB == nil {
 		return sql.ErrConnDone
 	}
-	
+
 	query := `UPDATE orders SET status = $1 WHERE id = $2`
 	_, err := configs.DB.Exec(query, newStatus, orderID)
 	return err
 }
-
-
-

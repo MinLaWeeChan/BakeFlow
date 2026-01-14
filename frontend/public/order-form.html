@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta property="fb:app_id" content="1199015768743989" />
-    <title>BakeFlow - Quick Order</title>
+    <title>BakeFlow - Fresh Baked Daily</title>
     
     <!-- Messenger Extensions SDK -->
     <script>
@@ -16,7 +16,6 @@
             fjs.parentNode.insertBefore(js, fjs);
         }(document, 'script', 'Messenger'));
         
-        // Initialize Messenger Extensions when SDK loads
         window.extAsyncInit = function() {
             MessengerExtensions.getSupportedFeatures(function success(result) {
                 console.log('✅ Messenger Extensions initialized:', result.supported_features);
@@ -26,633 +25,450 @@
         };
     </script>
     
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 500px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            padding: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-        }
-        
-        .header {
-            text-align: center;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f0f0f0;
-        }
-        
-        .header h1 {
-            font-size: 24px;
-            color: #333;
-            margin-bottom: 5px;
-        }
-        
-        .header p {
-            color: #888;
-            font-size: 14px;
-        }
-        
-        .products {
-            margin: 20px 0;
-        }
-        
-        .product-item {
-            display: flex;
-            align-items: center;
-            padding: 15px;
-            margin-bottom: 10px;
-            background: #f9f9f9;
-            border-radius: 12px;
-            transition: all 0.3s;
-        }
-        
-        .product-item:hover {
-            background: #f0f0f0;
-            transform: translateY(-2px);
-        }
-        
-        .product-emoji {
-            font-size: 40px;
-            margin-right: 15px;
-        }
-        
-        .product-info {
-            flex: 1;
-        }
-        
-        .product-name {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 3px;
-        }
-        
-        .product-price {
-            color: #667eea;
-            font-weight: 700;
-            font-size: 18px;
-        }
-        
-        .qty-controls {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .qty-btn {
-            width: 35px;
-            height: 35px;
-            border: none;
-            background: #667eea;
-            color: white;
-            border-radius: 50%;
-            font-size: 20px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .qty-btn:hover {
-            background: #5568d3;
-            transform: scale(1.1);
-        }
-        
-        .qty-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        
-        .qty-display {
-            font-weight: 700;
-            font-size: 18px;
-            min-width: 30px;
-            text-align: center;
-        }
-        
-        .cart-summary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 15px;
-            margin: 20px 0;
-        }
-        
-        .cart-items {
-            margin-bottom: 15px;
-        }
-        
-        .cart-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-        
-        .cart-total {
-            display: flex;
-            justify-content: space-between;
-            font-size: 22px;
-            font-weight: 700;
-            padding-top: 15px;
-            border-top: 2px solid rgba(255,255,255,0.3);
-        }
-        
-        .checkout-btn {
-            width: 100%;
-            padding: 18px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 18px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-        
-        .checkout-btn:hover {
-            background: #218838;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
-        }
-        
-        .checkout-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .empty-cart {
-            text-align: center;
-            padding: 40px 20px;
-            color: #888;
-        }
-        
-        .empty-cart-icon {
-            font-size: 60px;
-            margin-bottom: 15px;
-        }
-        
-        /* Delivery Form Styles */
-        .delivery-form {
-            display: none;
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        
-        .delivery-form.active {
-            display: block;
-        }
-        
-        .form-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #333;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .form-label {
-            display: block;
-            font-weight: 600;
-            color: #555;
-            margin-bottom: 5px;
-            font-size: 14px;
-        }
-        
-        .form-input {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border 0.3s;
-        }
-        
-        .form-input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        .form-input::placeholder {
-            color: #aaa;
-        }
-        
-        .radio-group {
-            display: flex;
-            gap: 15px;
-            margin-top: 10px;
-        }
-        
-        .radio-option {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.3s;
-            font-weight: 600;
-        }
-        
-        .radio-option:hover {
-            border-color: #667eea;
-            background: #f5f7ff;
-        }
-        
-        .radio-option.selected {
-            border-color: #667eea;
-            background: #667eea;
-            color: white;
-        }
-        
-        .form-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        .btn-back {
-            flex: 1;
-            padding: 15px;
-            background: #6c757d;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        
-        .btn-submit {
-            flex: 2;
-            padding: 15px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        
-        .btn-back:hover {
-            background: #5a6268;
-        }
-        
-        .btn-submit:hover {
-            background: #218838;
-        }
-    </style>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Lucide icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Leaflet (map) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- Modular CSS -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/hero.css">
+    <link rel="stylesheet" href="/css/products.css">
+    <link rel="stylesheet" href="/css/saved-orders.css">
+    <link rel="stylesheet" href="/css/cart-bar.css">
+    <link rel="stylesheet" href="/css/delivery-form.css">
+    <link rel="stylesheet" href="/css/sheets.css">
+    <link rel="stylesheet" href="/css/components.css">
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🍰 BakeFlow</h1>
-            <p>Select items to add to cart</p>
+    <!-- Hero Header -->
+    <div class="hero">
+        <div class="hero-content">
+            <div class="hero-badge">
+                <i data-lucide="sparkles"></i>
+                <span>Fresh baked daily</span>
+            </div>
+            <h1>BakeFlow</h1>
+            <p class="hero-subtitle">Artisan treats made with love, delivered to your door</p>
         </div>
-        
-        <div class="products" id="products">
-            <!-- Products will be loaded here -->
+    </div>
+
+    <div class="container" style="margin-top: -8px; position: relative; z-index: 1;">
+
+        <!-- Recent Orders Section -->
+        <section id="reorderSection" class="section" style="display:none;">
+            <div class="section-header">
+                <div class="section-title">
+                    <i data-lucide="clock"></i>
+                    <span>Recent Orders</span>
+                </div>
+                <button class="section-link" id="toggleRecentOrdersBtn" type="button" style="display:none;">
+                    <span>View previous</span>
+                    <i data-lucide="chevron-down" style="width:14px;height:14px;"></i>
+                </button>
+            </div>
+            <div id="reorderGrid" class="reorder-grid"></div>
+        </section>
+
+        <!-- Saved Orders Summary -->
+        <section id="savedSummarySection" class="section" style="display:none;">
+            <div class="saved-summary">
+                <div class="saved-summary-icon">
+                    <i data-lucide="bookmark"></i>
+                </div>
+                <div class="saved-summary-content">
+                    <div class="saved-summary-title"><span id="savedCount">0</span> Saved Orders</div>
+                    <div class="saved-summary-desc">Your favorites, ready when you are</div>
+                </div>
+                <button class="saved-summary-cta" id="manageSavedOrdersBtn">
+                    <span>Manage</span>
+                    <i data-lucide="chevron-right" style="width:14px;height:14px;"></i>
+                </button>
+            </div>
+        </section>
+
+        <div class="divider" id="sectionDivider" style="display:none;"></div>
+
+        <!-- Saved Places -->
+        <div id="savedPlacesBar" class="places-bar" style="display:none;">
+            <div class="section-header">
+                <div class="section-title">
+                    <i data-lucide="map-pin"></i>
+                    <span>Saved Places</span>
+                </div>
+                <button class="section-link" id="managePlacesBtn" type="button">
+                    <i data-lucide="settings-2" style="width:14px;height:14px;"></i>
+                    Manage
+                </button>
+            </div>
+            <div id="savedPlacesChips" class="places-chips"></div>
+            <div class="places-hint">Tap a place to auto-fill delivery</div>
         </div>
-        
-        <div class="cart-summary" id="cartSummary" style="display: none;">
-            <div class="cart-items" id="cartItems"></div>
-            <div class="cart-total">
-                <span>Total:</span>
-                <span id="totalAmount">$0.00</span>
+
+        <!-- Products Section -->
+        <section class="section">
+            <div class="products-header">
+                <span class="products-title">
+                    <i data-lucide="cake"></i>
+                    Today's Selection
+                </span>
+                <span class="products-count" id="productsCount">0 items</span>
+            </div>
+            <div class="products" id="products"></div>
+        </section>
+
+        <!-- Recurring Orders -->
+        <div id="recurringList" class="recurring-list" style="display:none;">
+            <div class="recurring-card">
+                <div class="recurring-header">
+                    <i data-lucide="repeat"></i>
+                    <span>Scheduled Orders</span>
+                </div>
+                <div id="recurringItems"></div>
             </div>
         </div>
-        
-        <div class="empty-cart" id="emptyCart">
-            <div class="empty-cart-icon">🛒</div>
-            <p>Your cart is empty</p>
-            <p style="font-size: 12px; margin-top: 5px;">Add items above to get started!</p>
+
+        <!-- Sticky Cart Bar -->
+        <div class="cart-bar" id="cartBar">
+            <div class="bar-inner">
+                <div class="bar-main">
+                    <div class="bar-summary">
+                        <div class="bar-summary-left">
+                            <div class="bar-cart-icon">
+                                <i data-lucide="shopping-bag"></i>
+                            </div>
+                            <div class="bar-items"><strong id="barItems">0</strong> items · <span id="barTotal">$0.00</span></div>
+                        </div>
+                        <div class="bar-total" id="barTotalBig">$0.00</div>
+                    </div>
+                    <button class="primary-btn" id="barCheckout" disabled>
+                        <i data-lucide="arrow-right"></i>
+                        Checkout
+                    </button>
+                </div>
+                <div class="secondary-row">
+                    <button class="secondary-btn" id="barSave" aria-label="Save order">
+                        <i data-lucide="bookmark"></i>
+                        <span>Save</span>
+                    </button>
+                    <button class="secondary-btn" id="barSchedule" aria-label="Schedule">
+                        <i data-lucide="calendar"></i>
+                        <span>Schedule</span>
+                    </button>
+                    <button class="secondary-btn" id="barRecurring" aria-label="Recurring">
+                        <i data-lucide="repeat"></i>
+                        <span>Repeat</span>
+                    </button>
+                </div>
+            </div>
         </div>
-        
-        <!-- Delivery Information Form -->
+
+        <!-- Delivery Form -->
         <div class="delivery-form" id="deliveryForm">
-            <div class="form-title">
-                <span>📋</span>
-                <span>Delivery Information</span>
+            <div class="form-header">
+                <button class="form-back" id="backToCartBtn">
+                    <i data-lucide="arrow-left"></i>
+                    <span>Back</span>
+                </button>
+                <div class="form-title">
+                    <i data-lucide="clipboard-list"></i>
+                    <span>Delivery Details</span>
+                </div>
+            </div>
+            <div id="errorBanner" class="error-banner"></div>
+            
+            <div class="form-group">
+                <label class="form-label">
+                    <i data-lucide="user"></i> Your Name
+                </label>
+                <div class="input-wrap">
+                    <i class="input-icon" data-lucide="user"></i>
+                    <input type="text" class="form-input" id="customerName" placeholder="What should we call you?" required>
+                </div>
             </div>
             
             <div class="form-group">
-                <label class="form-label">Your Name *</label>
-                <input type="text" class="form-input" id="customerName" placeholder="Enter your full name" required>
+                <label class="form-label">
+                    <i data-lucide="phone"></i> Phone Number
+                </label>
+                <div class="input-wrap">
+                    <i class="input-icon" data-lucide="phone"></i>
+                    <input type="tel" class="form-input" id="customerPhone" placeholder="For delivery updates" required>
+                </div>
             </div>
             
             <div class="form-group">
-                <label class="form-label">Phone Number *</label>
-                <input type="tel" class="form-input" id="customerPhone" placeholder="+95 9XX XXX XXXX" required>
-            </div>
-            
-            <div class="form-group">
-                <label class="form-label">Delivery Type *</label>
+                <label class="form-label">
+                    <i data-lucide="truck"></i> How would you like it?
+                </label>
                 <div class="radio-group">
                     <div class="radio-option" data-type="pickup" onclick="selectDeliveryType('pickup')">
-                        🏠 Pickup
+                        <i data-lucide="store"></i> Pick Up
                     </div>
                     <div class="radio-option" data-type="delivery" onclick="selectDeliveryType('delivery')">
-                        🚚 Delivery
+                        <i data-lucide="bike"></i> Delivery
                     </div>
                 </div>
             </div>
             
             <div class="form-group" id="addressGroup" style="display: none;">
-                <label class="form-label">Delivery Address *</label>
-                <input type="text" class="form-input" id="customerAddress" placeholder="Street, Township, City">
+                <label class="form-label">
+                    <i data-lucide="map-pin"></i> Delivery Address
+                </label>
+                <div class="input-wrap">
+                    <i class="input-icon" data-lucide="map-pin"></i>
+                    <input type="text" class="form-input" id="customerAddress" placeholder="Where should we deliver?">
+                </div>
+                <div class="mini-actions">
+                    <button type="button" class="mini-btn" onclick="useMyLocation()">
+                        <i data-lucide="locate"></i>
+                        <span>Use my location</span>
+                    </button>
+                    <button type="button" class="mini-btn" onclick="findOnMap()">
+                        <i data-lucide="search"></i>
+                        <span>Find on map</span>
+                    </button>
+                    <button type="button" class="mini-btn" id="openPlacesBtn">
+                        <i data-lucide="bookmark"></i>
+                        <span>Saved</span>
+                    </button>
+                </div>
+                <div class="seg-row">
+                    <button type="button" class="seg-btn active" id="tabMap">Map</button>
+                    <button type="button" class="seg-btn" id="tabDirections">Directions</button>
+                </div>
+                <div id="map" class="mini-map"></div>
+                <textarea id="deliveryDirections" class="textarea" placeholder="Building name, floor, gate, or landmarks to help us find you" style="display:none;"></textarea>
             </div>
             
             <div class="form-group">
-                <label class="form-label">Special Instructions (Optional)</label>
-                <input type="text" class="form-input" id="orderNotes" placeholder="e.g., Extra frosting, No nuts">
+                <label class="form-label">
+                    <i data-lucide="message-circle"></i> Special Requests
+                </label>
+                <div class="input-wrap">
+                    <i class="input-icon" data-lucide="message-circle"></i>
+                    <input type="text" class="form-input" id="orderNotes" placeholder="Extra frosting? No nuts? Let us know!">
+                </div>
+                <div class="mini-actions">
+                    <button type="button" class="mini-btn" onclick="appendNote('Leave at door')">
+                        <i data-lucide="door-open"></i>
+                        <span>Leave at door</span>
+                    </button>
+                    <button type="button" class="mini-btn" onclick="appendNote('Call on arrival')">
+                        <i data-lucide="phone-call"></i>
+                        <span>Call me</span>
+                    </button>
+                </div>
             </div>
-            
-            <div class="form-buttons">
-                <button class="btn-back" onclick="backToCart()">⬅️ Back</button>
-                <button class="btn-submit" onclick="submitOrder()">🎉 Place Order</button>
+        </div>
+
+        <!-- Order Bar -->
+        <div class="order-bar" id="orderBar">
+            <div class="order-inner">
+                <button class="place-btn" id="placeOrderBtn">
+                    <i data-lucide="check-circle"></i>
+                    <span>Place Order</span>
+                </button>
             </div>
         </div>
         
-        <button class="checkout-btn" id="checkoutBtn" disabled>
-            <span>✅</span>
-            <span>Checkout</span>
-        </button>
-    </div>
+        <!-- Sheet Backdrop -->
+        <div id="sheetBackdrop" class="sheet-backdrop"></div>
 
-    <script>
-        // Product catalog
-        const products = [
-            { id: 1, name: 'Chocolate Cake', emoji: '🍰', price: 25.00 },
-            { id: 2, name: 'Vanilla Cake', emoji: '🎂', price: 22.00 },
-            { id: 3, name: 'Red Velvet', emoji: '❤️', price: 26.00 },
-            { id: 4, name: 'Croissant', emoji: '🥐', price: 8.00 },
-            { id: 5, name: 'Cinnamon Roll', emoji: '🌀', price: 12.00 },
-            { id: 6, name: 'Cupcake', emoji: '🧁', price: 5.00 }
-        ];
-
-        let cart = {};
-        let deliveryType = null;
-
-        // Initialize
-        function init() {
-            renderProducts();
-            updateCart();
-        }
-
-        // Delivery type selection
-        function selectDeliveryType(type) {
-            deliveryType = type;
-            document.querySelectorAll('.radio-option').forEach(opt => {
-                opt.classList.remove('selected');
-            });
-            document.querySelector(`[data-type="${type}"]`).classList.add('selected');
-            
-            // Show/hide address field
-            const addressGroup = document.getElementById('addressGroup');
-            const addressInput = document.getElementById('customerAddress');
-            if (type === 'delivery') {
-                addressGroup.style.display = 'block';
-                addressInput.required = true;
-            } else {
-                addressGroup.style.display = 'none';
-                addressInput.required = false;
-            }
-        }
-
-        // Back to cart
-        function backToCart() {
-            document.getElementById('deliveryForm').classList.remove('active');
-            document.getElementById('products').style.display = 'block';
-            document.getElementById('cartSummary').style.display = 'block';
-            document.getElementById('checkoutBtn').style.display = 'flex';
-        }
-
-        // Render products
-        function renderProducts() {
-            const container = document.getElementById('products');
-            container.innerHTML = products.map(p => `
-                <div class="product-item">
-                    <div class="product-emoji">${p.emoji}</div>
-                    <div class="product-info">
-                        <div class="product-name">${p.name}</div>
-                        <div class="product-price">$${p.price.toFixed(2)}</div>
+        <!-- Save Order Sheet -->
+        <div id="saveSheet" class="sheet">
+            <div class="sheet-box">
+                <div class="sheet-handle"></div>
+                <div class="sheet-title" style="justify-content:center;">
+                    <i data-lucide="bookmark"></i>
+                    <span>Save this order</span>
+                </div>
+                
+                <div style="margin-bottom:16px;">
+                    <label class="sheet-label">Give it a name</label>
+                    <div class="input-wrap">
+                        <i class="input-icon" data-lucide="tag"></i>
+                        <input type="text" class="form-input" id="saveName" placeholder="e.g., Friday Treats, Office Breakfast" maxlength="40">
                     </div>
-                    <div class="qty-controls">
-                        <button class="qty-btn" onclick="decreaseQty(${p.id})" id="dec-${p.id}" disabled>−</button>
-                        <div class="qty-display" id="qty-${p.id}">0</div>
-                        <button class="qty-btn" onclick="increaseQty(${p.id})">+</button>
+                    <div class="count" id="saveCount">0/40</div>
+                </div>
+                
+                <div style="margin-bottom:16px;">
+                    <label class="sheet-label">Add a note (optional)</label>
+                    <div class="input-wrap">
+                        <i class="input-icon" data-lucide="sticky-note"></i>
+                        <input type="text" class="form-input" id="saveNote" placeholder="e.g., For 10 people, Client meeting" maxlength="60">
                     </div>
                 </div>
-            `).join('');
-        }
-
-        // Increase quantity
-        function increaseQty(productId) {
-            if (!cart[productId]) {
-                cart[productId] = 0;
-            }
-            cart[productId]++;
-            updateCart();
-        }
-
-        // Decrease quantity
-        function decreaseQty(productId) {
-            if (cart[productId] > 0) {
-                cart[productId]--;
-                if (cart[productId] === 0) {
-                    delete cart[productId];
-                }
-                updateCart();
-            }
-        }
-
-        // Update cart display
-        function updateCart() {
-            let total = 0;
-            let itemCount = 0;
-            let cartHTML = '';
-
-            // Update quantities in product list
-            products.forEach(p => {
-                const qty = cart[p.id] || 0;
-                document.getElementById(`qty-${p.id}`).textContent = qty;
-                document.getElementById(`dec-${p.id}`).disabled = qty === 0;
-            });
-
-            // Build cart summary
-            Object.keys(cart).forEach(id => {
-                const product = products.find(p => p.id == id);
-                const qty = cart[id];
-                const subtotal = product.price * qty;
-                total += subtotal;
-                itemCount += qty;
                 
-                cartHTML += `
-                    <div class="cart-item">
-                        <span>${product.emoji} ${product.name} × ${qty}</span>
-                        <span>$${subtotal.toFixed(2)}</span>
+                <div style="margin-bottom:20px;">
+                    <label class="sheet-label">Tag it</label>
+                    <div class="tag-chips">
+                        <label class="tag-chip" data-tag="personal">
+                            <input type="checkbox" id="tagPersonal" hidden>
+                            <i data-lucide="heart" style="width:14px;height:14px;"></i> Personal
+                        </label>
+                        <label class="tag-chip" data-tag="work">
+                            <input type="checkbox" id="tagWork" hidden>
+                            <i data-lucide="briefcase" style="width:14px;height:14px;"></i> Work
+                        </label>
+                        <label class="tag-chip" data-tag="event">
+                            <input type="checkbox" id="tagEvent" hidden>
+                            <i data-lucide="party-popper" style="width:14px;height:14px;"></i> Event
+                        </label>
                     </div>
-                `;
-            });
+                </div>
+                
+                <div class="hint" style="text-align:center;margin-bottom:16px;">
+                    Saved orders appear on the home screen for quick reordering
+                </div>
+                
+                <div class="sheet-row">
+                    <button class="sheet-btn" id="saveCancel">Cancel</button>
+                    <button class="sheet-btn primary" id="saveConfirm">
+                        <i data-lucide="check" style="width:16px;height:16px;"></i>
+                        Save Order
+                    </button>
+                </div>
+                
+                <div style="text-align:center;margin-top:16px;">
+                    <a href="#" id="viewSavedOrdersLink" style="font-size:13px;color:var(--primary);font-weight:600;text-decoration:none;">
+                        View all saved orders →
+                    </a>
+                </div>
+            </div>
+        </div>
 
-            // Show/hide cart summary
-            const cartSummary = document.getElementById('cartSummary');
-            const emptyCart = document.getElementById('emptyCart');
-            const checkoutBtn = document.getElementById('checkoutBtn');
+        <!-- Schedule Sheet -->
+        <div id="scheduleSheet" class="sheet">
+            <div class="sheet-box">
+                <div class="sheet-handle"></div>
+                <div class="sheet-title">
+                    <i data-lucide="calendar"></i>
+                    <span>Schedule for later</span>
+                </div>
+                <div class="sheet-row" style="gap:12px;">
+                    <div class="input-wrap" style="flex:1;">
+                        <i class="input-icon" data-lucide="calendar"></i>
+                        <input type="date" class="form-input" id="scheduleDate">
+                    </div>
+                    <div class="input-wrap" style="flex:1;">
+                        <i class="input-icon" data-lucide="clock"></i>
+                        <input type="time" class="form-input" id="scheduleTime">
+                    </div>
+                </div>
+                <div class="hint">We're open 8:00 AM – 8:00 PM daily</div>
+                <div class="sheet-row">
+                    <button class="sheet-btn" id="scheduleCancel">Cancel</button>
+                    <button class="sheet-btn primary" id="scheduleConfirm">Apply</button>
+                </div>
+            </div>
+        </div>
 
-            if (itemCount > 0) {
-                cartSummary.style.display = 'block';
-                emptyCart.style.display = 'none';
-                checkoutBtn.disabled = false;
-                document.getElementById('cartItems').innerHTML = cartHTML;
-                document.getElementById('totalAmount').textContent = `$${total.toFixed(2)}`;
-            } else {
-                cartSummary.style.display = 'none';
-                emptyCart.style.display = 'block';
-                checkoutBtn.disabled = true;
-            }
-        }
+        <!-- Recurring Sheet -->
+        <div id="recurringSheet" class="sheet">
+            <div class="sheet-box">
+                <div class="sheet-handle"></div>
+                <div class="sheet-title">
+                    <i data-lucide="repeat"></i>
+                    <span>Set up recurring order</span>
+                </div>
+                <div class="input-wrap" style="margin-bottom:12px;">
+                    <i class="input-icon" data-lucide="tag"></i>
+                    <input type="text" class="form-input" id="recurringName" placeholder="Name this recurring order" maxlength="40">
+                </div>
+                <label class="sheet-label">Which days?</label>
+                <div class="day-selector" style="margin-bottom:16px;">
+                    <label class="day-chip"><input type="checkbox" id="dayMon"> Mon</label>
+                    <label class="day-chip"><input type="checkbox" id="dayTue"> Tue</label>
+                    <label class="day-chip"><input type="checkbox" id="dayWed"> Wed</label>
+                    <label class="day-chip"><input type="checkbox" id="dayThu"> Thu</label>
+                    <label class="day-chip"><input type="checkbox" id="dayFri"> Fri</label>
+                    <label class="day-chip"><input type="checkbox" id="daySat"> Sat</label>
+                    <label class="day-chip"><input type="checkbox" id="daySun"> Sun</label>
+                </div>
+                <div class="sheet-row" style="gap:10px; margin-bottom:8px;">
+                    <div style="flex:1;">
+                        <label class="sheet-label">Time</label>
+                        <div class="input-wrap">
+                            <i class="input-icon" data-lucide="clock"></i>
+                            <input type="time" class="form-input" id="recurringTime">
+                        </div>
+                    </div>
+                    <div style="flex:1;">
+                        <label class="sheet-label">Start</label>
+                        <div class="input-wrap">
+                            <i class="input-icon" data-lucide="calendar"></i>
+                            <input type="date" class="form-input" id="recStart">
+                        </div>
+                    </div>
+                    <div style="flex:1;">
+                        <label class="sheet-label">End (optional)</label>
+                        <div class="input-wrap">
+                            <i class="input-icon" data-lucide="calendar"></i>
+                            <input type="date" class="form-input" id="recEnd">
+                        </div>
+                    </div>
+                </div>
+                <div class="hint">We'll remind you before each scheduled order</div>
+                <div class="sheet-row">
+                    <button class="sheet-btn" id="recurringCancel">Cancel</button>
+                    <button class="sheet-btn primary" id="recurringConfirm">Add</button>
+                </div>
+            </div>
+        </div>
 
-        // Checkout - show delivery form
-        document.getElementById('checkoutBtn').addEventListener('click', () => {
-            // Hide products and cart, show form
-            document.getElementById('products').style.display = 'none';
-            document.getElementById('cartSummary').style.display = 'none';
-            document.getElementById('emptyCart').style.display = 'none';
-            document.getElementById('checkoutBtn').style.display = 'none';
-            document.getElementById('deliveryForm').classList.add('active');
-        });
+        <!-- Places Sheet -->
+        <div id="placesSheet" class="sheet">
+            <div class="sheet-box">
+                <div class="sheet-handle"></div>
+                <div class="sheet-title">
+                    <i data-lucide="map-pin"></i>
+                    <span>Saved Places</span>
+                </div>
+                <div class="hint" style="margin-bottom:12px;">Save your current address for quick access next time</div>
 
-        // Submit order with delivery info
-        function submitOrder() {
-            console.log('🔍 Submit order clicked');
-            
-            const name = document.getElementById('customerName').value.trim();
-            const phone = document.getElementById('customerPhone').value.trim();
-            const address = document.getElementById('customerAddress').value.trim();
-            const notes = document.getElementById('orderNotes').value.trim();
+                <div style="margin-bottom:12px;">
+                    <div class="input-wrap">
+                        <i class="input-icon" data-lucide="tag"></i>
+                        <input type="text" class="form-input" id="placeName" placeholder="Name this place (Home, Office, etc.)" maxlength="30">
+                    </div>
+                    <div class="count" id="placeCount">0/30</div>
+                    <div class="sheet-row">
+                        <button class="sheet-btn" id="placeCloseBtn" type="button">Close</button>
+                        <button class="sheet-btn primary" id="placeSaveBtn" type="button">
+                            <i data-lucide="plus" style="width:16px;height:16px;"></i>
+                            Save Place
+                        </button>
+                    </div>
+                </div>
 
-            console.log('📝 Form data:', { name, phone, deliveryType, address, notes });
+                <div id="placesList" style="margin-top:16px;"></div>
+            </div>
+        </div>
 
-            // Validation
-            if (!name) {
-                alert('⚠️ Please enter your name');
-                return;
-            }
-            if (!phone) {
-                alert('⚠️ Please enter your phone number');
-                return;
-            }
-            if (!deliveryType) {
-                alert('⚠️ Please select delivery type');
-                return;
-            }
-            if (deliveryType === 'delivery' && !address) {
-                alert('⚠️ Please enter delivery address');
-                return;
-            }
+        <!-- Toast -->
+        <div id="toast" class="toast"></div>
+    </div>
 
-            // Get user ID from URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const userId = urlParams.get('user_id');
-
-            // Prepare order data
-            const items = Object.keys(cart).map(id => {
-                const product = products.find(p => p.id == id);
-                return {
-                    product_id: parseInt(id),
-                    name: product.name,
-                    qty: cart[id],
-                    price: product.price
-                };
-            });
-
-            const orderData = {
-                user_id: userId,
-                items: items,
-                channel: 'messenger',
-                customer_name: name,
-                customer_phone: phone,
-                delivery_type: deliveryType,
-                address: deliveryType === 'delivery' ? address : 'Pickup at store',
-                notes: notes
-            };
-
-            console.log('📦 Sending order:', orderData);
-
-            // Send to backend
-            fetch('http://localhost:8080/api/chat/orders', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            })
-            .then(res => {
-                console.log('📥 Response status:', res.status);
-                return res.json();
-            })
-            .then(data => {
-                console.log('📥 Response data:', data);
-                if (data.success) {
-                    alert(`🎉 Order #${data.order_id} placed successfully!\n\nWe'll contact you at ${phone} soon.\n\nCheck your Messenger for confirmation.`);
-                    
-                    // Close the webview (returns to Messenger chat)
-                    if (window.MessengerExtensions) {
-                        window.MessengerExtensions.requestCloseBrowser(function success() {
-                            console.log("✅ Webview closed");
-                        }, function error(err) {
-                            console.log("❌ Error closing webview:", err);
-                            // Fallback: just reload the page
-                            window.location.reload();
-                        });
-                    } else {
-                        // Not in Messenger, just clear the form
-                        cart = {};
-                        deliveryType = null;
-                        document.getElementById('customerName').value = '';
-                        document.getElementById('customerPhone').value = '';
-                        document.getElementById('customerAddress').value = '';
-                        document.getElementById('orderNotes').value = '';
-                        backToCart();
-                        updateCart();
-                    }
-                } else {
-                    alert('❌ Order failed: ' + (data.message || 'Unknown error'));
-                }
-            })
-            .catch(err => {
-                console.error('❌ Error:', err);
-                alert('❌ Network error. Check console for details.');
-            });
-        }
-
-        // Initialize on load
-        init();
-    </script>
+    <!-- Modular JavaScript -->
+    <script src="/js/utils.js"></script>
+    <script src="/js/sheets.js"></script>
+    <script src="/js/cart.js"></script>
+    <script src="/js/products.js"></script>
+    <script src="/js/saved-orders.js"></script>
+    <script src="/js/delivery.js"></script>
+    <script src="/js/places.js"></script>
+    <script src="/js/scheduling.js"></script>
+    <script src="/js/order.js"></script>
+    <script src="/js/app.js"></script>
 </body>
 </html>

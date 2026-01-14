@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -53,7 +54,10 @@ func main() {
 	// Start the server
 	log.Printf("Server starting on port %s...", port)
 	if err := http.ListenAndServe(":"+port, router); err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "address already in use") {
+			log.Fatalf("❌ Server failed to start: %v\n\nPort %s is already in use. Either stop the process using it, or run BakeFlow on a different port by setting PORT (e.g. PORT=8081).", err, port)
+		}
 		log.Fatalf("❌ Server failed to start: %v", err)
 	}
 }
-

@@ -7,15 +7,44 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 )
 
 // ShowWebviewOrderForm sends a button that opens a web mini-app inside Messenger
 func ShowWebviewOrderForm(userID string) {
 	state := GetUserState(userID)
 
-	// Build webview URL (this will open inside Messenger)
-	// TODO: Replace with your ngrok URL for testing or production domain
-	webviewURL := fmt.Sprintf("https://consuelo-subcardinal-nonfallaciously.ngrok-free.dev/order-form.html?user_id=%s", userID)
+	// Build webview URL (opens inside Messenger)
+	// Configure base domain via WEBVIEW_BASE_URL (e.g. https://<your-ngrok>.ngrok-free.dev)
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("WEBVIEW_BASE_URL")), "/")
+	if baseURL == "" {
+		baseURL = "https://consuelo-subcardinal-nonfallaciously.ngrok-free.dev"
+	}
+
+	// Signed token binds this webview session to the Messenger PSID.
+	// NOTE: Requires WEBVIEW_TOKEN_SECRET to be set.
+	// Keep TTL short to reduce replay risk if the URL is shared.
+	// Override via WEBVIEW_TOKEN_TTL_HOURS (default 24h).
+	ttl := 24 * time.Hour
+	if s := strings.TrimSpace(os.Getenv("WEBVIEW_TOKEN_TTL_HOURS")); s != "" {
+		if n, err := strconv.Atoi(s); err == nil {
+			if n > 0 && n <= 720 { // cap at 30 days
+				ttl = time.Duration(n) * time.Hour
+			}
+		}
+	}
+
+	tok, err := GenerateWebviewToken(userID, ttl)
+	if err != nil {
+		log.Printf("⚠️  WEBVIEW_TOKEN_SECRET not configured; falling back to user_id in URL: %v", err)
+	}
+
+	webviewURL := fmt.Sprintf("%s/order-form.html?user_id=%s", baseURL, userID)
+	if tok != "" {
+		webviewURL = fmt.Sprintf("%s&t=%s", webviewURL, tok)
+	}
 
 	msg := "🍰 Order from our mini shop!"
 	if state.Language == "my" {
@@ -62,7 +91,6 @@ func SendButtonTemplate(userID, text string, buttons []Button) error {
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
-	log.Printf("🔍 FULL PAYLOAD: %s", string(payloadBytes))
 	url := fmt.Sprintf("https://graph.facebook.com/v18.0/me/messages?access_token=%s", pageAccessToken)
 
 	resp, err := http.Post(url, "application/json", bytes.NewReader(payloadBytes))
@@ -72,9 +100,7 @@ func SendButtonTemplate(userID, text string, buttons []Button) error {
 	}
 	defer resp.Body.Close()
 
-	// Read response body for debugging
-	bodyBytes, _ := json.Marshal(payload)
-	log.Printf("📤 Sent payload: %s", string(bodyBytes))
+	// Avoid logging full payload because it may contain sensitive webview URLs/tokens.
 
 	if resp.StatusCode != http.StatusOK {
 		respBody := make([]byte, 1024)

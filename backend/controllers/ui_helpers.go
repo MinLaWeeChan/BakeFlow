@@ -1,11 +1,11 @@
 package controllers
 
 import (
+	"bakeflow/configs"
+	"bakeflow/models"
 	"fmt"
 	"strconv"
 	"strings"
-	"bakeflow/models"
-	"bakeflow/configs"
 )
 
 // getProductElements returns product carousel elements from the database

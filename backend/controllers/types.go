@@ -7,6 +7,8 @@ type CartItem struct {
 	Product      string
 	ProductEmoji string
 	Quantity     int
+	ProductID    int
+	Price        float64
 }
 
 // UserState tracks the conversation state for each user

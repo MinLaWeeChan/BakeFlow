@@ -1,0 +1,368 @@
+/**
+ * BakeFlow - Saved Orders & Reorder Component
+ * Personal, warm saved order cards
+ */
+
+/* ========== Section Header ========== */
+.section {
+    margin-bottom: var(--space-lg);
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-md);
+    padding: 0 var(--space-xs);
+}
+
+.section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--gray-800);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-title svg {
+    width: 18px;
+    height: 18px;
+    color: var(--primary);
+}
+
+.section-link {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    transition: all var(--transition-fast);
+}
+
+.section-link:hover {
+    background: var(--primary-light);
+}
+
+.section-link svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ========== Reorder Grid ========== */
+.reorder-grid {
+    display: grid;
+    gap: var(--space-md);
+}
+
+/* ========== Reorder Card ========== */
+.reorder-card {
+    background: var(--warm-white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+    padding: var(--space-md);
+    display: flex;
+    gap: var(--space-md);
+    transition: all var(--transition);
+    cursor: pointer;
+    position: relative;
+}
+
+.reorder-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-lg);
+    border: 2px solid transparent;
+    transition: border-color var(--transition);
+    pointer-events: none;
+}
+
+.reorder-card:hover {
+    box-shadow: var(--shadow);
+    transform: translateY(-2px);
+}
+
+.reorder-card:hover::before {
+    border-color: var(--primary-light);
+}
+
+.reorder-card:active {
+    transform: translateY(0);
+}
+
+/* "Your usual" badge */
+.reorder-card.usual::after {
+    content: 'Your usual';
+    position: absolute;
+    top: -8px;
+    right: 12px;
+    background: var(--accent);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ========== Thumbnail Stack ========== */
+.reorder-thumbs {
+    display: flex;
+    flex-shrink: 0;
+}
+
+.reorder-thumb {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius);
+    object-fit: cover;
+    background: var(--gray-100);
+    border: 2px solid var(--warm-white);
+    box-shadow: var(--shadow-xs);
+}
+
+.reorder-thumb:not(:first-child) {
+    margin-left: -16px;
+}
+
+.reorder-thumb-more {
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius);
+    background: var(--gray-100);
+    border: 2px solid var(--warm-white);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-left: -16px;
+}
+
+/* ========== Reorder Content ========== */
+.reorder-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.reorder-name {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--gray-800);
+    margin-bottom: 6px;
+    line-height: 1.3;
+}
+
+.reorder-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-bottom: 8px;
+}
+
+.reorder-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.reorder-meta svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* Personal context - time ago */
+.reorder-context {
+    font-size: 12px;
+    color: var(--gray-400);
+    font-style: italic;
+}
+
+.reorder-price {
+    font-weight: 800;
+    font-size: 17px;
+    color: var(--primary);
+}
+
+/* ========== Reorder Actions ========== */
+.reorder-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+    align-self: center;
+}
+
+.reorder-btn {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: var(--radius);
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.reorder-btn.primary {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+
+.reorder-btn.primary:hover {
+    background: var(--primary-hover);
+    transform: scale(1.02);
+}
+
+.reorder-btn.primary:active {
+    transform: scale(0.98);
+}
+
+.reorder-btn.secondary {
+    background: var(--gray-100);
+    color: var(--gray-700);
+}
+
+.reorder-btn.secondary:hover {
+    background: var(--gray-200);
+}
+
+.reorder-btn svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* ========== Saved Orders Summary Card ========== */
+.saved-summary {
+    background: var(--warm-white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+    padding: var(--space-md);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.saved-summary-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius);
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.saved-summary-icon svg {
+    width: 22px;
+    height: 22px;
+    color: var(--primary);
+}
+
+.saved-summary-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.saved-summary-title {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--gray-800);
+}
+
+.saved-summary-desc {
+    font-size: 13px;
+    color: var(--gray-500);
+    margin-top: 2px;
+}
+
+.saved-summary-cta {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: var(--radius);
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+}
+
+.saved-summary-cta:hover {
+    background: #fce8e1;
+    transform: translateX(2px);
+}
+
+.saved-summary-cta svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ========== Empty Reorder State ========== */
+.empty-reorder {
+    text-align: center;
+    padding: var(--space-xl) var(--space-lg);
+    background: var(--warm-white);
+    border-radius: var(--radius-lg);
+    border: 2px dashed var(--gray-200);
+}
+
+.empty-reorder-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-full);
+    background: var(--gray-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-md);
+}
+
+.empty-reorder-icon svg {
+    width: 24px;
+    height: 24px;
+    color: var(--gray-400);
+}
+
+.empty-reorder-title {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--gray-700);
+    margin-bottom: 4px;
+}
+
+.empty-reorder-desc {
+    font-size: 13px;
+    color: var(--gray-500);
+    max-width: 240px;
+    margin: 0 auto;
+}
+
+/* ========== Divider ========== */
+.divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gray-200), transparent);
+    margin: var(--space-lg) 0;
+}

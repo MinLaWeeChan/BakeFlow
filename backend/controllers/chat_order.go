@@ -3,19 +3,30 @@ package controllers
 import (
 	"bakeflow/configs"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 )
 
+type ChatOrderSchedule struct {
+	Type string `json:"type"`
+	Date string `json:"date"`
+	Time string `json:"time"`
+}
+
 type ChatOrderRequest struct {
-	UserID       string          `json:"user_id"`
-	Items        []ChatOrderItem `json:"items"`
-	Channel      string          `json:"channel"`
-	Notes        string          `json:"notes"`
-	CustomerName string          `json:"customer_name"`
-	CustomerPhone string         `json:"customer_phone"`
-	DeliveryType string          `json:"delivery_type"`
-	Address      string          `json:"address"`
+	UserID        string             `json:"user_id"`
+	Items         []ChatOrderItem    `json:"items"`
+	Channel       string             `json:"channel"`
+	Notes         string             `json:"notes"`
+	CustomerName  string             `json:"customer_name"`
+	CustomerPhone string             `json:"customer_phone"`
+	DeliveryType  string             `json:"delivery_type"`
+	Address       string             `json:"address"`
+	Schedule      *ChatOrderSchedule `json:"schedule"`
 }
 
 type ChatOrderItem struct {
@@ -40,12 +51,45 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine user identity.
+	// Preferred: signed token (?t=...) which encodes PSID.
+	userID := strings.TrimSpace(req.UserID)
+	if tok := strings.TrimSpace(r.URL.Query().Get("t")); tok != "" {
+		if psid, err := VerifyWebviewToken(tok); err == nil {
+			userID = psid
+		} else {
+			log.Printf("⚠️  Invalid webview token: %v", err)
+		}
+	}
+	if userID == "" {
+		http.Error(w, "missing user identity", http.StatusBadRequest)
+		return
+	}
+
 	if len(req.Items) == 0 {
 		http.Error(w, "cart is empty", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("📦 Creating order for user %s with %d items", req.UserID, len(req.Items))
+	log.Printf("📦 Creating order for user %s with %d items", userID, len(req.Items))
+
+	// Parse schedule (if provided)
+	var scheduledFor *time.Time
+	scheduleType := ""
+	orderStatus := "pending"
+	if req.Schedule != nil {
+		scheduleType = strings.TrimSpace(req.Schedule.Type)
+		dateStr := strings.TrimSpace(req.Schedule.Date)
+		timeStr := strings.TrimSpace(req.Schedule.Time)
+		if dateStr != "" && timeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04:05", dateStr+"T"+timeStr+":00"); err == nil {
+				scheduledFor = &t
+				if t.After(time.Now()) {
+					orderStatus = "scheduled"
+				}
+			}
+		}
+	}
 
 	// Calculate total and item count
 	var total float64
@@ -63,11 +107,27 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Insert order into database
 	var orderID int
-	err := configs.DB.QueryRow(`
-		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, created_at)
-		VALUES ($1, $2, $3, 'pending', $4, $5, 0, $5, $6, NOW())
+
+	insertWithSchedule := `
+		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, scheduled_for, schedule_type, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, $6, $7, $8, $9, NOW())
 		RETURNING id
-	`, customerInfo, req.DeliveryType, req.Address, totalItems, total, req.UserID).Scan(&orderID)
+	`
+
+	insertLegacy := `
+		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, $6, $7, NOW())
+		RETURNING id
+	`
+
+	err := configs.DB.QueryRow(insertWithSchedule, customerInfo, req.DeliveryType, req.Address, orderStatus, totalItems, total, userID, scheduledFor, scheduleType).Scan(&orderID)
+	if err != nil {
+		// Backwards compatible fallback if DB columns aren't migrated yet.
+		msg := err.Error()
+		if strings.Contains(msg, "scheduled_for") || strings.Contains(msg, "schedule_type") {
+			err = configs.DB.QueryRow(insertLegacy, customerInfo, req.DeliveryType, req.Address, orderStatus, totalItems, total, userID).Scan(&orderID)
+		}
+	}
 
 	if err != nil {
 		log.Printf("❌ Failed to create order: %v", err)
@@ -102,24 +162,35 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	// Send confirmation message to user via Messenger (async)
 	go func() {
 		defer func() { _ = recover() }()
-		
+
 		itemsList := ""
 		for i, item := range req.Items {
-			if i < 3 {
-				itemsList += item.Name + " × " + string(rune(item.Qty+'0')) + "\n"
+			if i >= 3 {
+				break
 			}
+			itemsList += fmt.Sprintf("%s × %d\n", item.Name, item.Qty)
 		}
 		if len(req.Items) > 3 {
 			itemsList += "...and more\n"
 		}
 
+		schedLine := ""
+		if scheduledFor != nil {
+			schedLine = fmt.Sprintf("\nScheduled: %s %s\n", req.Schedule.Date, req.Schedule.Time)
+		}
+		statusLine := "Status: ⏳ Pending\n\n"
+		if orderStatus == "scheduled" {
+			statusLine = "Status: 🗓 Scheduled\n\n"
+		}
+
 		msg := "🎉 Order Confirmed!\n\n" +
-			"Order #" + string(rune(orderID+'0')) + "\n" +
+			"Order #" + strconv.Itoa(orderID) + "\n" +
 			itemsList +
-			"\nTotal: $" + string(rune(int(total))) + "\n" +
-			"Status: ⏳ Pending\n\n" +
+			fmt.Sprintf("\nTotal: $%.2f\n", total) +
+			schedLine +
+			statusLine +
 			"We'll start preparing your order soon!"
 
-		SendMessage(req.UserID, msg)
+		SendMessage(userID, msg)
 	}()
 }

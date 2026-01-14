@@ -9,17 +9,17 @@ import (
 
 // Product represents a product in the system
 type Product struct {
-	ID          int             `json:"id"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Category    string          `json:"category"`
-	Price       float64         `json:"price"`
-	Stock       int             `json:"stock"`
-	ImageURL    string          `json:"image_url"`
-	Status      string          `json:"status"` // draft, active, inactive, archived
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
-	DeletedAt   sql.NullTime    `json:"deleted_at,omitempty"`
+	ID          int          `json:"id"`
+	Name        string       `json:"name"`
+	Description string       `json:"description"`
+	Category    string       `json:"category"`
+	Price       float64      `json:"price"`
+	Stock       int          `json:"stock"`
+	ImageURL    string       `json:"image_url"`
+	Status      string       `json:"status"` // draft, active, inactive, archived
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	DeletedAt   sql.NullTime `json:"deleted_at,omitempty"`
 }
 
 // ProductLog represents an audit log entry for product changes
@@ -34,14 +34,14 @@ type ProductLog struct {
 
 // ProductAnalytics represents analytics data for a product
 type ProductAnalytics struct {
-	ID               int          `json:"id"`
-	ProductID        int          `json:"product_id"`
-	Views            int          `json:"views"`
-	Purchases        int          `json:"purchases"`
-	LastViewedAt     sql.NullTime `json:"last_viewed_at,omitempty"`
-	LastPurchasedAt  sql.NullTime `json:"last_purchased_at,omitempty"`
-	CreatedAt        time.Time    `json:"created_at"`
-	UpdatedAt        time.Time    `json:"updated_at"`
+	ID              int          `json:"id"`
+	ProductID       int          `json:"product_id"`
+	Views           int          `json:"views"`
+	Purchases       int          `json:"purchases"`
+	LastViewedAt    sql.NullTime `json:"last_viewed_at,omitempty"`
+	LastPurchasedAt sql.NullTime `json:"last_purchased_at,omitempty"`
+	CreatedAt       time.Time    `json:"created_at"`
+	UpdatedAt       time.Time    `json:"updated_at"`
 }
 
 // AdminRole represents an admin role with permissions
@@ -215,4 +215,38 @@ func GetProductByID(db *sql.DB, id int) (*Product, error) {
 		p.ImageURL = img.String
 	}
 	return &p, nil
+}
+
+// GetRecentProducts returns recent, non-deleted products regardless of status
+func GetRecentProducts(db *sql.DB, limit int, offset int) ([]Product, error) {
+	query := `
+		SELECT id, name, description, category, price, stock, image_url, status, created_at, updated_at
+		FROM products
+		WHERE deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+	rows, err := db.Query(query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var products []Product
+	for rows.Next() {
+		var p Product
+		var desc sql.NullString
+		var img sql.NullString
+		if err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &p.Price, &p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if desc.Valid {
+			p.Description = desc.String
+		}
+		if img.Valid {
+			p.ImageURL = img.String
+		}
+		products = append(products, p)
+	}
+	return products, rows.Err()
 }

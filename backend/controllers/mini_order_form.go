@@ -1,8 +1,11 @@
 package controllers
 
 import (
+	"bakeflow/configs"
+	"bakeflow/models"
 	"fmt"
 	"log"
+	"strings"
 )
 
 // ShowMiniOrderForm displays an interactive quick-order interface
@@ -14,55 +17,72 @@ func ShowMiniOrderForm(userID string) {
 	// Build product elements with add/remove buttons
 	elements := []Element{}
 
-	// Get top 4 products for quick order
-	topProducts := []struct {
-		ID       string
-		Name     string
-		Price    float64
-		Emoji    string
-		Payload  string
-	}{
-		{"1", "Chocolate Cake", 25.00, "🍰", "QUICK_ORDER_CAKE"},
-		{"2", "Vanilla Cake", 22.00, "🎂", "QUICK_ORDER_VANILLA"},
-		{"3", "Croissant", 8.00, "🥐", "QUICK_ORDER_CROISSANT"},
-		{"4", "Cinnamon Roll", 12.00, "🌀", "QUICK_ORDER_CINNAMON"},
+	// Load recent products from DB (all statuses)
+	products, err := models.GetRecentProducts(configs.DB, 12, 0)
+	if err != nil {
+		log.Printf("❌ Failed to load active products: %v", err)
+		products = []models.Product{}
 	}
 
-	for _, prod := range topProducts {
+	for _, p := range products {
+		emoji := "🍰"
+		switch strings.ToLower(p.Category) {
+		case "cakes":
+			emoji = "🎂"
+		case "cupcakes":
+			emoji = "🧁"
+		case "coffee":
+			emoji = "☕"
+		case "bread":
+			emoji = "🍞"
+		case "muffins":
+			emoji = "🧁"
+		case "tarts":
+			emoji = "🥧"
+		case "pastries":
+			emoji = "🥐"
+		}
+
 		buttons := []Button{
 			{
-				Type: "postback",
-				Title: "➕ +1",
-				Payload: fmt.Sprintf("QUICK_ADD_%s", prod.Payload),
+				Type:    "postback",
+				Title:   "➕ +1",
+				Payload: fmt.Sprintf("QUICK_ADD_PRODUCT_%d", p.ID),
 			},
 			{
-				Type: "postback",
-				Title: "🛒 View",
-				Payload: fmt.Sprintf("QUICK_VIEW_%s", prod.Payload),
+				Type:    "postback",
+				Title:   "🛒 Order",
+				Payload: fmt.Sprintf("ORDER_PRODUCT_%d", p.ID),
 			},
 		}
 
 		element := Element{
-			Title: fmt.Sprintf("%s %s", prod.Emoji, prod.Name),
-			Subtitle: fmt.Sprintf("$%.2f", prod.Price),
-			Buttons: buttons,
+			Title: fmt.Sprintf("%s %s", emoji, p.Name),
+			ImageURL: func() string {
+				if p.ImageURL != "" {
+					return p.ImageURL
+				}
+				return "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=300&h=200&fit=crop"
+			}(),
+			Subtitle: fmt.Sprintf("%s • $%.2f", p.Description, p.Price),
+			Buttons:  buttons,
 		}
 		elements = append(elements, element)
 	}
 
 	// Add action buttons
 	elements = append(elements, Element{
-		Title: "📋 My Cart",
+		Title:    "📋 My Cart",
 		Subtitle: "Review items & checkout",
 		Buttons: []Button{
 			{
-				Type: "postback",
-				Title: "View Cart",
+				Type:    "postback",
+				Title:   "View Cart",
 				Payload: "QUICK_SHOW_CART",
 			},
 			{
-				Type: "postback",
-				Title: "Proceed",
+				Type:    "postback",
+				Title:   "Proceed",
 				Payload: "QUICK_CHECKOUT",
 			},
 		},
@@ -131,6 +151,63 @@ func handleQuickAddProduct(userID, productKey string) {
 	showQuickCartSummary(userID)
 }
 
+// handleQuickAddProductByID adds +1 of a DB product to cart
+func handleQuickAddProductByID(userID string, productID int) {
+	state := GetUserState(userID)
+
+	p, err := models.GetProductByID(configs.DB, productID)
+	if err != nil || p == nil {
+		SendMessage(userID, "❌ Product not found")
+		return
+	}
+
+	emoji := "🍰"
+	switch strings.ToLower(p.Category) {
+	case "cakes":
+		emoji = "🎂"
+	case "cupcakes":
+		emoji = "🧁"
+	case "coffee":
+		emoji = "☕"
+	case "bread":
+		emoji = "🍞"
+	case "muffins":
+		emoji = "🧁"
+	case "tarts":
+		emoji = "🥧"
+	case "pastries":
+		emoji = "🥐"
+	}
+
+	if state.Cart == nil {
+		state.Cart = make([]CartItem, 0)
+	}
+
+	// Check if product already in cart
+	found := false
+	for i, item := range state.Cart {
+		if item.ProductID == p.ID || item.Product == p.Name {
+			state.Cart[i].Quantity++
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		state.Cart = append(state.Cart, CartItem{
+			Product:      p.Name,
+			ProductEmoji: emoji,
+			Quantity:     1,
+			ProductID:    p.ID,
+			Price:        p.Price,
+		})
+	}
+
+	msg := fmt.Sprintf("✅ Added %s %s to cart!", emoji, p.Name)
+	SendMessage(userID, msg)
+	showQuickCartSummary(userID)
+}
+
 // showQuickCartSummary shows a compact cart view with action buttons
 func showQuickCartSummary(userID string) {
 	state := GetUserState(userID)
@@ -144,22 +221,14 @@ func showQuickCartSummary(userID string) {
 	summary := "🛒 **Your Quick Cart:**\n\n"
 	total := 0.0
 
-	// Map products to prices (temporary, should come from DB)
-	priceMap := map[string]float64{
-		"Chocolate Cake": 25.00,
-		"Vanilla Cake":   22.00,
-		"Croissant":      8.00,
-		"Cinnamon Roll":  12.00,
-	}
-
 	for _, item := range state.Cart {
-		price, exists := priceMap[item.Product]
-		if !exists {
-			price = 20.00 // default
+		price := item.Price
+		if price <= 0 {
+			price = 20.00
 		}
 		subtotal := price * float64(item.Quantity)
 		total += subtotal
-		summary += fmt.Sprintf("%s %s × %d = $%.2f\n", 
+		summary += fmt.Sprintf("%s %s × %d = $%.2f\n",
 			item.ProductEmoji, item.Product, item.Quantity, subtotal)
 	}
 
@@ -168,20 +237,14 @@ func showQuickCartSummary(userID string) {
 
 	if state.Language == "my" {
 		summary = "🛒 **သင်၏စတုံအိုး:**\n\n"
-		priceMap := map[string]float64{
-			"Chocolate Cake": 25.00,
-			"Vanilla Cake":   22.00,
-			"Croissant":      8.00,
-			"Cinnamon Roll":  12.00,
-		}
 		for _, item := range state.Cart {
-			price, exists := priceMap[item.Product]
-			if !exists {
+			price := item.Price
+			if price <= 0 {
 				price = 20.00
 			}
 			subtotal := price * float64(item.Quantity)
 			total += subtotal
-			summary += fmt.Sprintf("%s %s × %d = $%.2f\n", 
+			summary += fmt.Sprintf("%s %s × %d = $%.2f\n",
 				item.ProductEmoji, item.Product, item.Quantity, subtotal)
 		}
 		summary += fmt.Sprintf("\n**စုစုပေါင်း: $%.2f**\n\n", total)
@@ -264,7 +327,7 @@ func LogCartState(userID string, state *UserState) {
 		}
 		subtotal := price * float64(item.Quantity)
 		total += subtotal
-		log.Printf("   %d) %s × %d @ $%.2f = $%.2f", 
+		log.Printf("   %d) %s × %d @ $%.2f = $%.2f",
 			i+1, item.Product, item.Quantity, price, subtotal)
 	}
 	log.Printf("   Total: $%.2f", total)

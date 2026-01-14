@@ -59,7 +59,7 @@ export default function OrdersPage() {
         // Detect new pending orders for notifications (only after initial load)
         if (initializedRef.current) {
           const newPendingOrders = incomingOrders.filter(order => {
-            return order.status === 'pending' && !seenOrdersRef.current.has(order.id);
+            return (order.status === 'pending' || order.status === 'scheduled') && !seenOrdersRef.current.has(order.id);
           });
 
           if (newPendingOrders.length > 0) {
@@ -175,7 +175,8 @@ export default function OrdersPage() {
       { key: 'ready', label: t('ready'), icon: 'check-circle' },
       { key: 'delivered', label: t('delivered'), icon: 'truck' }
     ];
-    const currentIndex = steps.findIndex(s => s.key === currentStatus);
+    const normalized = currentStatus === 'scheduled' ? 'pending' : currentStatus;
+    const currentIndex = steps.findIndex(s => s.key === normalized);
     return steps.map((step, idx) => ({
       ...step,
       isActive: idx === currentIndex,
@@ -184,12 +185,13 @@ export default function OrdersPage() {
   };
 
   const getNextAction = (status) => {
+    const normalized = status === 'scheduled' ? 'pending' : status;
     const actions = {
       pending: { label: t('startPreparing'), nextStatus: 'preparing', icon: 'egg-fried', color: 'primary' },
       preparing: { label: t('markAsReady'), nextStatus: 'ready', icon: 'check-circle', color: 'info' },
       ready: { label: t('markAsDelivered'), nextStatus: 'delivered', icon: 'truck', color: 'success' }
     };
-    return actions[status];
+    return actions[normalized];
   };
 
   return (
@@ -273,6 +275,11 @@ export default function OrdersPage() {
                           <div>
                             <h5 className="mb-1 fw-bold">Order #{order.id}</h5>
                             <small className="text-muted"><i className="bi bi-clock me-1"></i>{new Date(order.created_at).toLocaleString()}</small>
+                            {order.scheduled_for && (
+                              <div className="mt-1">
+                                <small className="text-muted"><i className="bi bi-calendar-event me-1"></i>Scheduled for: {new Date(order.scheduled_for).toLocaleString()}</small>
+                              </div>
+                            )}
                           </div>
                           <span className={`badge bg-${statusColor(order.status)} px-3 py-2`}>
                             {order.status.toUpperCase()}

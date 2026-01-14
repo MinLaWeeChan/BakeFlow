@@ -1,0 +1,481 @@
+/**
+ * BakeFlow Order Form - Main Application Logic
+ * Handles cart, products, delivery form, and order submission
+ */
+
+// ========== State Variables ==========
+let products = [];
+let cart = {};
+let pendingSchedule = null;
+let deliveryType = null;
+let geo = null;
+let map = null;
+let marker = null;
+
+// ========== Initialization ==========
+async function init() {
+    try {
+        const res = await fetch('/api/products?limit=50&sort_by=created_at&sort_dir=DESC');
+        const data = await res.json();
+        const list = Array.isArray(data.products) ? data.products : [];
+        products = list.map(p => ({
+            id: p.id,
+            name: p.name,
+            emoji: '',
+            price: Number(p.price) || 0,
+            created_at: p.created_at,
+            image_url: p.image_url || '',
+            description: p.description || ''
+        }));
+        products.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+    } catch (e) {
+        console.log('❌ Failed to load products', e);
+        products = [];
+    }
+    
+    renderProducts();
+    updateCart();
+    renderSavedOrders();
+    renderPlacesBar();
+    renderRecurringOrders();
+    
+    if (window.lucide && window.lucide.createIcons) {
+        window.lucide.createIcons();
+    }
+    
+    adjustSafePadding();
+    window.addEventListener('resize', adjustSafePadding);
+    window.addEventListener('orientationchange', adjustSafePadding);
+
+    // Handle pending reorder cart from Saved Orders page
+    const params = new URLSearchParams(window.location.search);
+    const userId = params.get('user_id') || 'guest';
+    const pendingCartKey = `pending_reorder_${userId}`;
+    const pendingCart = localStorage.getItem(pendingCartKey);
+    
+    if (pendingCart) {
+        try {
+            const items = JSON.parse(pendingCart);
+            cart = {};
+            items.forEach(it => {
+                const p = products.find(px => px.id == it.id);
+                if (p) cart[it.id] = it.qty;
+            });
+            updateCart();
+            localStorage.removeItem(pendingCartKey);
+            showToast('✓ Order loaded');
+        } catch(e) { console.log('Failed to load pending cart', e); }
+    }
+    
+    // Handle reorder flag from order details
+    if (params.get('reorder') === '1' && !pendingCart) {
+        const key = `saved_orders_${userId}`;
+        const list = JSON.parse(localStorage.getItem(key) || '[]');
+        if (list.length > 0) {
+            cart = {};
+            (list[0].items || []).forEach(it => {
+                const p = products.find(px => (px.name || '').toLowerCase() === (it.name || '').toLowerCase());
+                const id = p ? p.id : null;
+                if (id) cart[id] = it.qty;
+            });
+            updateCart();
+            showToast('✓ Order loaded');
+        }
+    }
+    
+    // Handle schedule flag
+    if (params.get('schedule') === '1') {
+        setTimeout(() => {
+            const d = new Date();
+            document.getElementById('scheduleDate').value = d.toISOString().slice(0,10);
+            document.getElementById('scheduleTime').value = '';
+            openSheet('scheduleSheet');
+        }, 300);
+    }
+
+    // Wire navigation links
+    wireNavigationLinks(userId);
+    
+    // Setup map tabs
+    setupMapTabs();
+}
+
+function wireNavigationLinks(userId) {
+    const headerLink = document.getElementById('headerSavedOrdersLink');
+    if (headerLink) {
+        headerLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.location.href = `saved-orders.html?user_id=${encodeURIComponent(userId)}`;
+        });
+    }
+    
+    document.querySelectorAll('.viewAllSavedLink').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.location.href = `saved-orders.html?user_id=${encodeURIComponent(userId)}`;
+        });
+    });
+}
+
+function setupMapTabs() {
+    const hasLeaflet = !!window.L;
+    activateTab(hasLeaflet ? 'map' : 'dir');
+    
+    const tabMap = document.getElementById('tabMap');
+    const tabDir = document.getElementById('tabDirections');
+    if (tabMap) tabMap.addEventListener('click', () => activateTab('map'));
+    if (tabDir) tabDir.addEventListener('click', () => activateTab('dir'));
+}
+
+// ========== Product Rendering ==========
+function renderProducts() {
+    const container = document.getElementById('products');
+    const countEl = document.getElementById('productsCount');
+    
+    if (countEl) countEl.textContent = `${products.length} items`;
+    
+    container.innerHTML = products.map(p => {
+        const img = p.image_url && p.image_url.length > 0 
+            ? p.image_url 
+            : `https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=300&h=200&fit=crop`;
+        return `
+        <div class="p-card">
+            <img class="p-thumb" src="${img}" alt="${escapeHtml(p.name)}" />
+            <div class="p-info">
+                <div class="p-name">${escapeHtml(p.name)}</div>
+                ${p.description ? `<div class="p-desc">${escapeHtml(p.description)}</div>` : ''}
+            </div>
+            <div class="p-cta">
+                <div class="p-price">$${p.price.toFixed(2)}</div>
+                <div class="qty-controls">
+                    <button class="qty-btn minus" onclick="decreaseQty(${p.id})" id="dec-${p.id}" disabled>−</button>
+                    <div class="qty-display" id="qty-${p.id}">0</div>
+                    <button class="qty-btn plus" onclick="increaseQty(${p.id})">+</button>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ========== Cart Management ==========
+function increaseQty(productId) {
+    if (!cart[productId]) cart[productId] = 0;
+    cart[productId]++;
+    updateCart();
+}
+
+function decreaseQty(productId) {
+    if (cart[productId] > 0) {
+        cart[productId]--;
+        if (cart[productId] === 0) delete cart[productId];
+        updateCart();
+    }
+}
+
+function updateCart() {
+    let total = 0;
+    let itemCount = 0;
+
+    products.forEach(p => {
+        const qty = cart[p.id] || 0;
+        const qtyEl = document.getElementById(`qty-${p.id}`);
+        const decEl = document.getElementById(`dec-${p.id}`);
+        if (qtyEl) qtyEl.textContent = qty;
+        if (decEl) decEl.disabled = qty === 0;
+    });
+
+    Object.keys(cart).forEach(id => {
+        const product = products.find(p => p.id == id);
+        const qty = cart[id];
+        total += (product.price * qty);
+        itemCount += qty;
+    });
+
+    const barItemsEl = document.getElementById('barItems');
+    const barTotalEl = document.getElementById('barTotal');
+    const barTotalBigEl = document.getElementById('barTotalBig');
+    const barCheckoutEl = document.getElementById('barCheckout');
+    
+    if (barItemsEl) barItemsEl.textContent = itemCount;
+    if (barTotalEl) barTotalEl.textContent = `$${total.toFixed(2)}`;
+    if (barTotalBigEl) barTotalBigEl.textContent = `$${total.toFixed(2)}`;
+    if (barCheckoutEl) barCheckoutEl.disabled = itemCount === 0;
+
+    if (pendingSchedule && barTotalEl) {
+        const when = `${pendingSchedule.date} ${pendingSchedule.time}`;
+        barTotalEl.innerHTML = `$${total.toFixed(2)} · <span style="color:var(--primary);font-size:11px;">📅 ${when}</span>`;
+    }
+    
+    adjustSafePadding();
+}
+
+// ========== Delivery Form ==========
+function openDeliveryForm() {
+    // Hide main content
+    document.querySelectorAll('.section').forEach(s => {
+        if (!s.classList.contains('delivery-form')) {
+            s.style.display = 'none';
+        }
+    });
+    document.getElementById('savedPlacesBar').style.display = 'none';
+    document.getElementById('recurringList').style.display = 'none';
+    
+    // Show delivery form
+    document.getElementById('deliveryForm').classList.add('active');
+    document.getElementById('cartBar').style.display = 'none';
+    document.getElementById('orderBar').style.display = 'block';
+    adjustSafePadding();
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+}
+
+function backToCart() {
+    document.getElementById('deliveryForm').classList.remove('active');
+    document.querySelectorAll('.section').forEach(s => s.style.display = '');
+    document.getElementById('cartBar').style.display = 'block';
+    document.getElementById('orderBar').style.display = 'none';
+    renderSavedOrders();
+    renderPlacesBar();
+    renderRecurringOrders();
+    adjustSafePadding();
+}
+
+function selectDeliveryType(type) {
+    deliveryType = type;
+    document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
+    document.querySelector(`[data-type="${type}"]`).classList.add('selected');
+    
+    const addressGroup = document.getElementById('addressGroup');
+    const addressInput = document.getElementById('customerAddress');
+    if (type === 'delivery') {
+        addressGroup.style.display = 'block';
+        addressInput.required = true;
+    } else {
+        addressGroup.style.display = 'none';
+        addressInput.required = false;
+    }
+}
+
+// ========== Location & Map ==========
+async function useMyLocation() {
+    const err = showError;
+    if (!navigator.geolocation) { err('Location is not available on this device'); return; }
+    
+    try {
+        const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+        });
+        const { latitude:lat, longitude:lon } = pos.coords;
+        const address = await reverseGeocode(lat, lon);
+        document.getElementById('customerAddress').value = address;
+        selectDeliveryType('delivery');
+        document.getElementById('addressGroup').style.display = 'block';
+        geo = { lat, lon, address };
+        showMap(lat, lon);
+        activateTab('map');
+    } catch(e) {
+        err('Unable to get location. Check permissions.');
+    }
+}
+
+async function reverseGeocode(lat, lon) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
+    const res = await fetch(url, { headers: { 'Accept':'application/json' } });
+    const j = await res.json();
+    return j.display_name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
+async function findOnMap() {
+    const q = document.getElementById('customerAddress').value.trim();
+    const err = showError;
+    if (!q) { err('Enter an address to find on map'); return; }
+    
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}`;
+        const res = await fetch(url, { headers: { 'Accept':'application/json' } });
+        const list = await res.json();
+        if (!list || !list.length) { err('Address not found'); return; }
+        const { lat, lon, display_name } = list[0];
+        const latNum = parseFloat(lat), lonNum = parseFloat(lon);
+        document.getElementById('customerAddress').value = display_name;
+        geo = { lat: latNum, lon: lonNum, address: display_name };
+        selectDeliveryType('delivery');
+        document.getElementById('addressGroup').style.display = 'block';
+        showMap(latNum, lonNum);
+        activateTab('map');
+    } catch(e) { err('Search failed. Try again.'); }
+}
+
+function showMap(lat, lon) {
+    const el = document.getElementById('map');
+    if (!el) return;
+    
+    if (!map) {
+        map = L.map('map', { zoomControl:false }).setView([lat, lon], 16);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution:'© OpenStreetMap' }).addTo(map);
+        marker = L.marker([lat, lon], { draggable:true }).addTo(map);
+        marker.on('dragend', async () => {
+            const p = marker.getLatLng();
+            const address = await reverseGeocode(p.lat, p.lng);
+            document.getElementById('customerAddress').value = address;
+            geo = { lat: p.lat, lon: p.lng, address };
+        });
+    } else {
+        map.setView([lat, lon], 16);
+        if (marker) { marker.setLatLng([lat, lon]); } 
+        else { marker = L.marker([lat, lon], { draggable:true }).addTo(map); }
+    }
+}
+
+function activateTab(which) {
+    const tabMap = document.getElementById('tabMap');
+    const tabDir = document.getElementById('tabDirections');
+    const mapEl = document.getElementById('map');
+    const dirEl = document.getElementById('deliveryDirections');
+    if (!tabMap || !tabDir || !mapEl || !dirEl) return;
+    
+    if (which === 'map') {
+        tabMap.classList.add('active'); tabDir.classList.remove('active');
+        mapEl.style.display = 'block'; dirEl.style.display = 'none';
+    } else {
+        tabDir.classList.add('active'); tabMap.classList.remove('active');
+        mapEl.style.display = 'none'; dirEl.style.display = 'block';
+    }
+}
+
+// ========== UI Helpers ==========
+function adjustSafePadding() {
+    const cartBar = document.getElementById('cartBar');
+    const orderBar = document.getElementById('orderBar');
+    const h1 = cartBar && cartBar.style.display !== 'none' ? cartBar.offsetHeight : 0;
+    const h2 = orderBar && orderBar.style.display !== 'none' ? orderBar.offsetHeight : 0;
+    const h = Math.max(h1, h2);
+    const pad = Math.max(h + 16, 120);
+    document.documentElement.style.setProperty('--content-bottom-pad', pad + 'px');
+}
+
+function appendNote(text) {
+    const el = document.getElementById('orderNotes');
+    el.value = el.value ? (el.value + ' · ' + text) : text;
+}
+
+function showError(msg) {
+    const b = document.getElementById('errorBanner');
+    b.textContent = msg;
+    b.style.display = 'block';
+    setTimeout(() => { b.style.display = 'none'; }, 2500);
+}
+
+function getUserId() {
+    return new URLSearchParams(window.location.search).get('user_id') || 'guest';
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function timeAgo(timestamp) {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return 'Just now';
+    const mins = Math.floor(seconds / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 4) return `${weeks}w ago`;
+    return new Date(timestamp).toLocaleDateString();
+}
+
+// ========== Order Submission ==========
+function submitOrder() {
+    console.log('🔍 Submit order clicked');
+    
+    const name = document.getElementById('customerName').value.trim();
+    const phone = document.getElementById('customerPhone').value.trim();
+    const address = document.getElementById('customerAddress').value.trim();
+    const notes = document.getElementById('orderNotes').value.trim();
+
+    if (!name) { showError('Please enter your name'); return; }
+    if (!phone) { showError('Please enter your phone number'); return; }
+    if (!deliveryType) { showError('Please select delivery type'); return; }
+    if (deliveryType === 'delivery' && !address) { showError('Please enter delivery address'); return; }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user_id');
+
+    const items = Object.keys(cart).map(id => {
+        const product = products.find(p => p.id == id);
+        return {
+            product_id: parseInt(id),
+            name: product.name,
+            qty: cart[id],
+            price: product.price
+        };
+    });
+
+    if (!items.length) { showError('Your cart is empty'); return; }
+
+    const orderData = {
+        user_id: userId,
+        items: items,
+        channel: 'messenger',
+        customer_name: name,
+        customer_phone: phone,
+        delivery_type: deliveryType,
+        address: deliveryType === 'delivery' ? address : 'Pickup at store',
+        notes: notes,
+        schedule: pendingSchedule || null,
+        geo: geo,
+        delivery_directions: document.getElementById('deliveryDirections')?.value.trim() || ''
+    };
+
+    console.log('📦 Sending order:', orderData);
+
+    fetch('http://localhost:8080/api/chat/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Order #${data.order_id} placed successfully!\n\nWe'll contact you at ${phone} soon.\n\nCheck your Messenger for confirmation.`);
+            
+            if (window.MessengerExtensions) {
+                window.MessengerExtensions.requestCloseBrowser(
+                    () => console.log("✅ Webview closed"),
+                    (err) => {
+                        console.log("❌ Error closing webview:", err);
+                        window.location.reload();
+                    }
+                );
+            } else {
+                cart = {};
+                deliveryType = null;
+                document.getElementById('customerName').value = '';
+                document.getElementById('customerPhone').value = '';
+                document.getElementById('customerAddress').value = '';
+                document.getElementById('orderNotes').value = '';
+                backToCart();
+                updateCart();
+            }
+        } else {
+            alert('❌ Order failed: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        console.error('❌ Error:', err);
+        alert('❌ Network error. Check console for details.');
+    });
+}
+
+// Expose functions globally
+window.increaseQty = increaseQty;
+window.decreaseQty = decreaseQty;
+window.selectDeliveryType = selectDeliveryType;
+window.useMyLocation = useMyLocation;
+window.findOnMap = findOnMap;
+window.appendNote = appendNote;
+window.backToCart = backToCart;

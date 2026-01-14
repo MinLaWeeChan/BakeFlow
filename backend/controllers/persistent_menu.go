@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 // SetupPersistentMenu creates a persistent menu (hamburger menu) in Messenger
@@ -20,7 +21,7 @@ func SetupPersistentMenu() error {
 
 	// Define menu for English users (Max 3 items per Facebook's limit)
 	menuEN := map[string]interface{}{
-		"locale": "default",
+		"locale":                  "default",
 		"composer_input_disabled": false,
 		"call_to_actions": []map[string]interface{}{
 			{
@@ -43,7 +44,7 @@ func SetupPersistentMenu() error {
 
 	// Define menu for Myanmar/Burmese users (Max 3 items per Facebook's limit)
 	menuMY := map[string]interface{}{
-		"locale": "my_MM",
+		"locale":                  "my_MM",
 		"composer_input_disabled": false,
 		"call_to_actions": []map[string]interface{}{
 			{
@@ -153,8 +154,16 @@ func SetupGreetingText() error {
 
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("❌ Failed to set greeting text: %s", string(body))
-		return fmt.Errorf("failed to set greeting text: %s", string(body))
+		bodyStr := string(body)
+		// Recent Graph/Messenger Profile API responses may reject the 'greeting' field entirely.
+		// In that case, treat it as a non-fatal capability mismatch (the bot can still send a
+		// welcome message after GET_STARTED).
+		if strings.Contains(bodyStr, "Requires one of the params") {
+			log.Printf("⚠️  Skipping greeting text setup (Graph API rejected 'greeting'): %s", bodyStr)
+			return nil
+		}
+		log.Printf("❌ Failed to set greeting text: %s", bodyStr)
+		return fmt.Errorf("failed to set greeting text: %s", bodyStr)
 	}
 
 	log.Println("✅ Greeting text set successfully!")

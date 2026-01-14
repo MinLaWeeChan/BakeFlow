@@ -1,0 +1,192 @@
+/**
+ * BakeFlow - Toast & Notifications Component
+ */
+
+/* ========== Toast ========== */
+.toast {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    bottom: 100px;
+    background: var(--gray-900);
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: var(--radius-full);
+    box-shadow: var(--shadow-lg);
+    display: none;
+    font-weight: 600;
+    font-size: 14px;
+    z-index: 300;
+    opacity: 0;
+    transition: all var(--transition);
+}
+
+.toast.show {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.toast.success {
+    background: var(--success);
+}
+
+.toast.warning {
+    background: var(--warning);
+    color: var(--gray-900);
+}
+
+.toast svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* ========== Saved Places Bar ========== */
+.places-bar {
+    margin-bottom: var(--space-lg);
+}
+
+.places-chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.places-chips::-webkit-scrollbar {
+    display: none;
+}
+
+.place-chip {
+    padding: 10px 16px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-full);
+    background: var(--warm-white);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--gray-700);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all var(--transition-fast);
+}
+
+.place-chip:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-300);
+}
+
+.place-chip:active {
+    transform: scale(0.98);
+}
+
+.place-chip svg {
+    width: 14px;
+    height: 14px;
+    color: var(--primary);
+}
+
+.places-hint {
+    color: var(--gray-500);
+    font-size: 12px;
+    padding: 6px 2px 0;
+}
+
+/* ========== Recurring Orders List ========== */
+.recurring-list {
+    margin-top: var(--space-md);
+}
+
+.recurring-card {
+    background: var(--warm-white);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-100);
+}
+
+.recurring-header {
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--gray-800);
+    margin-bottom: var(--space-sm);
+}
+
+.recurring-header svg {
+    width: 16px;
+    height: 16px;
+    color: var(--primary);
+}
+
+.recurring-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--gray-100);
+}
+
+.recurring-item:last-child {
+    border-bottom: none;
+}
+
+.recurring-info {
+    flex: 1;
+}
+
+.recurring-name {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--gray-800);
+}
+
+.recurring-schedule {
+    font-size: 12px;
+    color: var(--gray-500);
+    margin-top: 2px;
+}
+
+.recurring-next {
+    font-size: 11px;
+    color: var(--gray-400);
+    margin-top: 2px;
+}
+
+.recurring-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.recurring-action-btn {
+    padding: 8px 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    background: var(--warm-white);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-600);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.recurring-action-btn:hover {
+    background: var(--gray-50);
+}
+
+.recurring-action-btn svg {
+    width: 14px;
+    height: 14px;
+}

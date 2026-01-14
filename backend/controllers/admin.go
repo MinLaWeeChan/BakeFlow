@@ -19,7 +19,7 @@ func AdminGetOrders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	
+
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -27,19 +27,19 @@ func AdminGetOrders(w http.ResponseWriter, r *http.Request) {
 
 	// Set JSON header before any response
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	log.Printf("📋 Fetching all orders from database...")
-	
+
 	// Get all orders from database
 	orders, err := models.GetAllOrders()
 	if err != nil {
 		log.Printf("❌ Error fetching orders: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": "Error fetching orders",
+			"error":   "Error fetching orders",
 			"details": err.Error(),
-			"orders": []interface{}{},
-			"total": 0,
+			"orders":  []interface{}{},
+			"total":   0,
 		})
 		return
 	}
@@ -61,7 +61,7 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 	w.Header().Set("Access-Control-Allow-Methods", "PUT, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	
+
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -88,6 +88,7 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Validate status
 	validStatuses := map[string]bool{
+		"scheduled": true,
 		"pending":   true,
 		"preparing": true,
 		"ready":     true,
@@ -109,6 +110,7 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Validate allowed status transition (no skipping)
 	allowedNext := map[string]string{
+		"scheduled": "preparing",
 		"pending":   "preparing",
 		"preparing": "ready",
 		"ready":     "delivered",
@@ -156,10 +158,10 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Respond immediately before potentially slow external notification
 	resp := map[string]interface{}{
-		"success":   true,
-		"order_id":  orderID,
-		"new_status": requestBody.Status,
-		"message":   "Order status updated",
+		"success":                 true,
+		"order_id":                orderID,
+		"new_status":              requestBody.Status,
+		"message":                 "Order status updated",
 		"notification_dispatched": currentOrder.SenderID != "", // whether we'll attempt notification
 	}
 	w.Header().Set("Content-Type", "application/json")
