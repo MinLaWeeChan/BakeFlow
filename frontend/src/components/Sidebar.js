@@ -24,6 +24,7 @@ export default function Sidebar({ open, toggle }) {
     { href: '/admin', icon: 'speedometer2', key: 'dashboard' },
     { href: '/admin/orders', icon: 'receipt', key: 'orders' },
     { href: '/admin/products', icon: 'box-seam', key: 'products' },
+    { href: '/admin/promotions', icon: 'tag', key: 'promotions' },
     { href: '/admin/customers', icon: 'people', key: 'customers' },
     { href: '/admin/analytics', icon: 'graph-up', key: 'analytics' },
     { href: '/admin/settings', icon: 'gear', key: 'settings' }

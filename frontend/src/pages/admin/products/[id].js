@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import Image from 'next/image';
 import Sidebar from '../../../components/Sidebar';
 import TopNavbar from '../../../components/TopNavbar';
 import { useNotifications } from '../../../contexts/NotificationContext';
@@ -34,13 +35,13 @@ export default function ProductFormPage() {
 
   const [errors, setErrors] = useState({});
 
-  useEffect(() => {
-    if (isEdit) {
-      fetchProduct();
-    }
-  }, [id]);
+  const showNotification = useCallback((message, type) => {
+    setNotification({ show: true, message, type });
+    setTimeout(() => setNotification({ show: false, message: '', type: '' }), 5000);
+  }, []);
 
-  const fetchProduct = async () => {
+  const fetchProduct = useCallback(async () => {
+    if (!isEdit || !id) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/products/${id}`);
@@ -66,7 +67,11 @@ export default function ProductFormPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE, id, isEdit, showNotification]);
+
+  useEffect(() => {
+    fetchProduct();
+  }, [fetchProduct]);
 
   const validate = () => {
     const newErrors = {};
@@ -152,11 +157,6 @@ export default function ProductFormPage() {
     setTimeout(() => {
       document.getElementById('product-form').requestSubmit();
     }, 100);
-  };
-
-  const showNotification = (message, type) => {
-    setNotification({ show: true, message, type });
-    setTimeout(() => setNotification({ show: false, message: '', type: '' }), 5000);
   };
 
   return (
@@ -305,11 +305,13 @@ export default function ProductFormPage() {
                             />
                             {previewUrl && (
                               <div className="mt-2">
-                                <img 
-                                  src={previewUrl} 
-                                  alt="Preview" 
-                                  style={{maxWidth: 200, maxHeight: 200, borderRadius: 8}}
-                                  onError={(e) => e.target.style.display = 'none'}
+                                <Image
+                                  src={previewUrl}
+                                  alt="Preview"
+                                  width={200}
+                                  height={200}
+                                  style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, height: 'auto' }}
+                                  unoptimized
                                 />
                               </div>
                             )}

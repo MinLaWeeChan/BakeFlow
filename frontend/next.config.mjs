@@ -2,6 +2,14 @@
 const nextConfig = {
   /* config options here */
   reactStrictMode: true,
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'res.cloudinary.com' },
+      { protocol: 'http', hostname: 'localhost' },
+      { protocol: 'https', hostname: 'localhost' },
+    ],
+  },
   
   // Serve static HTML files from public folder
   async rewrites() {

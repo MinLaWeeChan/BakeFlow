@@ -222,6 +222,114 @@ func showOrderHistory(userID string) {
 	SendGenericTemplate(userID, elements)
 }
 
+// showOrderTracking displays the status of a specific order or the most recent one
+// If orderID is 0, shows the most recent order
+func showOrderTracking(userID string, orderID int) {
+	var order *models.Order
+	var err error
+
+	if orderID > 0 {
+		// Get specific order by ID
+		order, err = models.GetOrderByID(orderID)
+		if err != nil || order == nil {
+			SendMessage(userID, "📦 Order not found.\n\nTap the button below to place an order!")
+			SendQuickReplies(userID, "Would you like to order?", []QuickReply{
+				{ContentType: "text", Title: "🛒 Order Now", Payload: "ORDER_NOW"},
+			})
+			return
+		}
+	} else {
+		// Get the user's most recent order
+		orders, err := models.GetRecentOrdersBySenderID(userID, 1)
+		if err != nil || len(orders) == 0 {
+			SendMessage(userID, "📦 No recent orders found.\n\nTap the button below to place an order!")
+			SendQuickReplies(userID, "Would you like to order?", []QuickReply{
+				{ContentType: "text", Title: "🛒 Order Now", Payload: "ORDER_NOW"},
+			})
+			return
+		}
+		order = &orders[0]
+	}
+
+	// Status emoji and message
+	statusInfo := map[string]struct {
+		emoji   string
+		message string
+	}{
+		"pending":    {"⏳", "Your order is being reviewed"},
+		"confirmed":  {"✅", "Your order has been confirmed"},
+		"preparing":  {"👨‍🍳", "Your order is being prepared"},
+		"ready":      {"📦", "Your order is ready for pickup"},
+		"delivering": {"🚗", "Your order is on the way"},
+		"delivered":  {"✅", "Your order has been delivered"},
+		"cancelled":  {"❌", "This order was cancelled"},
+		"scheduled":  {"📅", "Your order is scheduled"},
+	}
+
+	info, ok := statusInfo[order.Status]
+	if !ok {
+		info = statusInfo["pending"]
+	}
+
+	// Build items list
+	itemsList := ""
+	for i, item := range order.Items {
+		if i >= 3 {
+			itemsList += fmt.Sprintf("  ...and %d more\n", len(order.Items)-3)
+			break
+		}
+		itemsList += fmt.Sprintf("  • %s × %d\n", item.Product, item.Quantity)
+	}
+
+	// Build tracking message
+	msg := fmt.Sprintf("📍 *Order Tracking*\n\n"+
+		"Order #BF-%d\n"+
+		"━━━━━━━━━━━━━━━\n\n"+
+		"%s *%s*\n"+
+		"%s\n\n"+
+		"*Items:*\n%s\n"+
+		"*Total:* $%.2f\n"+
+		"*Type:* %s",
+		order.ID,
+		info.emoji, strings.Title(order.Status),
+		info.message,
+		itemsList,
+		order.TotalAmount,
+		strings.Title(order.DeliveryType))
+
+	if order.DeliveryType == "delivery" && order.Address != "" {
+		msg += fmt.Sprintf("\n*Deliver to:* %s", order.Address)
+	}
+
+	SendMessage(userID, msg)
+
+	// Add helpful buttons based on status
+	var buttons []Button
+	switch order.Status {
+	case "delivered":
+		buttons = []Button{
+			{Type: "postback", Title: "⭐ Rate Order", Payload: fmt.Sprintf("RATE_ORDER_%d", order.ID)},
+			{Type: "postback", Title: "🔄 Order Again", Payload: "ORDER_NOW"},
+		}
+	case "cancelled":
+		buttons = []Button{
+			{Type: "postback", Title: "🛒 New Order", Payload: "ORDER_NOW"},
+		}
+	default:
+		buttons = []Button{
+			{Type: "postback", Title: "📋 View Menu", Payload: "MENU_ORDER"},
+			{Type: "postback", Title: "❓ Need Help?", Payload: "CONTACT_SUPPORT"},
+		}
+	}
+
+	// Send as a card with status
+	SendGenericTemplate(userID, []Element{{
+		Title:    fmt.Sprintf("%s Order #BF-%d", info.emoji, order.ID),
+		Subtitle: fmt.Sprintf("Status: %s\n%s", strings.Title(order.Status), info.message),
+		Buttons:  buttons,
+	}})
+}
+
 // Rating handling moved to `order_service.go`.
 
 // Business-hour checks moved to `order_service.go`.

@@ -1,16 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from '../utils/i18n';
 
-// Helper to format relative time
-function getRelativeTime(timestamp) {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'Just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function formatTimestamp(timestamp) {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString();
 }
 
 export default function TopNavbar({
@@ -122,7 +117,7 @@ export default function TopNavbar({
                             </div>
                             <div className="bf-notif-time">
                               <i className="bi bi-clock me-1"></i>
-                              {getRelativeTime(notif.timestamp || Date.now())}
+                              {notif.timestamp ? formatTimestamp(notif.timestamp) : t('justNow')}
                             </div>
                           </div>
                           {!notif.read && (

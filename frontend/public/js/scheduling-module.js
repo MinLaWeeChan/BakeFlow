@@ -37,20 +37,45 @@ function initScheduleSheet() {
     });
 }
 
-function initRecurringSheet() {
-    document.getElementById('barRecurring').addEventListener('click', () => {
-        document.getElementById('recurringName').value = '';
-        ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d => {
-            const el = document.getElementById('day' + d);
-            if (el) el.checked = false;
+// ========== Clear Cart ==========
+function initClearCartButton() {
+    const clearBtn = document.getElementById('barClear');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (Object.keys(window.getCart ? window.getCart() : {}).length === 0) {
+                showToast('Cart is already empty');
+                return;
+            }
+            if (confirm('Clear all items from cart?')) {
+                window.setCart({});
+                window.updateCart();
+                showToast('Cart cleared', 'success');
+            }
         });
-        document.getElementById('recurringTime').value = '';
-        document.getElementById('recStart').value = new Date().toISOString().slice(0, 10);
-        document.getElementById('recEnd').value = '';
-        openSheet('recurringSheet');
-    });
+    }
+}
+
+function initRecurringSheet() {
+    // Initialize clear cart button
+    initClearCartButton();
     
-    document.getElementById('recurringCancel').addEventListener('click', closeSheets);
+    // Keep recurring functionality for saved recurring orders
+    const barRecurring = document.getElementById('barRecurring');
+    if (barRecurring) {
+        barRecurring.addEventListener('click', () => {
+            document.getElementById('recurringName').value = '';
+            ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d => {
+                const el = document.getElementById('day' + d);
+                if (el) el.checked = false;
+            });
+            document.getElementById('recurringTime').value = '';
+            document.getElementById('recStart').value = new Date().toISOString().slice(0, 10);
+            document.getElementById('recEnd').value = '';
+            openSheet('recurringSheet');
+        });
+    }
+    
+    document.getElementById('recurringCancel')?.addEventListener('click', closeSheets);
     
     document.getElementById('recurringConfirm').addEventListener('click', () => {
         const name = document.getElementById('recurringName').value.trim();

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import Sidebar from '../../../components/Sidebar';
 import TopNavbar from '../../../components/TopNavbar';
 import { useNotifications } from '../../../contexts/NotificationContext';
@@ -62,9 +63,9 @@ export default function OrdersArchivePage() {
                   <h1 className="h3 fw-bold mb-1">Orders Archive</h1>
                   <p className="text-muted mb-0">Delivered orders</p>
                 </div>
-                <a href="/admin/orders" className="btn btn-outline-secondary">
+                <Link href="/admin/orders" className="btn btn-outline-secondary">
                   <i className="bi bi-arrow-left me-2" />Back to Orders
-                </a>
+                </Link>
               </div>
 
               {error && <div className="alert alert-danger">{error}</div>}

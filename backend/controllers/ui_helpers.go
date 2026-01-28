@@ -38,11 +38,30 @@ func getProductElements() []Element {
 		case "pastries":
 			emoji = "🥐"
 		}
+
+		// Get product rating
+		avgRating, ratingCount, _ := models.GetProductAvgRating(p.ID)
+		ratingText := ""
+		if ratingCount > 0 {
+			stars := strings.Repeat("⭐", int(avgRating))
+			ratingText = fmt.Sprintf("\n%s %.1f (%d reviews)", stars, avgRating, ratingCount)
+		} else {
+			ratingText = "\n⭐ No ratings yet"
+		}
+
+		subtitle := fmt.Sprintf("%s • %s%s", p.Description, price, ratingText)
+
+		// Add buttons: Order and Rate
+		buttons := []Button{
+			{Type: "postback", Title: "🛒 Order", Payload: fmt.Sprintf("ORDER_PRODUCT_%d", p.ID)},
+			{Type: "postback", Title: "⭐ Rate", Payload: fmt.Sprintf("RATE_PRODUCT_%d", p.ID)},
+		}
+
 		elements = append(elements, Element{
 			Title:    emoji + " " + p.Name,
 			ImageURL: img,
-			Subtitle: fmt.Sprintf("%s • %s", p.Description, price),
-			Buttons:  []Button{{Type: "postback", Title: "🛒 Order", Payload: fmt.Sprintf("ORDER_PRODUCT_%d", p.ID)}},
+			Subtitle: subtitle,
+			Buttons:  buttons,
 		})
 	}
 	return elements
@@ -203,9 +222,59 @@ func showProducts(userID string) {
 		return
 	}
 
+	// Show active promotions first
+	showActivePromotions(userID)
+
 	state := GetUserState(userID)
 	state.State = "awaiting_product"
+	SendTypingIndicator(userID, true)
 	SendGenericTemplate(userID, getProductElements())
+}
+
+// showActivePromotions displays active promotions to the user
+func showActivePromotions(userID string) {
+	promotions, err := models.GetActivePromotions()
+	if err != nil || len(promotions) == 0 {
+		return // No promotions, silently skip
+	}
+
+	state := GetUserState(userID)
+
+	// Show highest priority promotion
+	promo := promotions[0]
+	rules, err := promo.ParseRules()
+	if err != nil {
+		return
+	}
+
+	var promoMsg string
+	if promo.Type == "PERCENT_OFF" && rules.Percent > 0 {
+		if len(rules.ProductIDs) == 0 {
+			promoMsg = fmt.Sprintf("🎉 **Special Promotion!**\n\n%d%% OFF on all products!\n\nValid until %s",
+				int(rules.Percent), promo.EndAt.Format("Jan 2, 2006"))
+		} else {
+			promoMsg = fmt.Sprintf("🎉 **Special Promotion!**\n\n%d%% OFF on selected products!\n\nValid until %s",
+				int(rules.Percent), promo.EndAt.Format("Jan 2, 2006"))
+		}
+	} else if promo.Type == "BUY_X_GET_Y" && rules.BuyQty > 0 && rules.GetQty > 0 {
+		promoMsg = fmt.Sprintf("🎉 **Special Promotion!**\n\nBuy %d Get %d Free!\n\nValid until %s",
+			rules.BuyQty, rules.GetQty, promo.EndAt.Format("Jan 2, 2006"))
+	} else {
+		promoMsg = fmt.Sprintf("🎉 **Special Promotion!**\n\n%s\n\nValid until %s",
+			promo.Name, promo.EndAt.Format("Jan 2, 2006"))
+	}
+
+	if state.Language == "my" {
+		if promo.Type == "PERCENT_OFF" && rules.Percent > 0 {
+			promoMsg = fmt.Sprintf("🎉 **အထူးလျှော့စျေး!**\n\nထုတ်ကုန်အားလုံးတွင် %d%% လျှော့စျေး!\n\n%s အထိ စျေးနှုန်းများ",
+				int(rules.Percent), promo.EndAt.Format("Jan 2, 2006"))
+		} else if promo.Type == "BUY_X_GET_Y" {
+			promoMsg = fmt.Sprintf("🎉 **အထူးလျှော့စျေး!**\n\n%d ခု ဝယ်ရင် %d ခု အလကားရ!**\n\n%s အထိ",
+				rules.BuyQty, rules.GetQty, promo.EndAt.Format("Jan 2, 2006"))
+		}
+	}
+
+	SendMessage(userID, promoMsg)
 }
 
 // askQuantity asks how many items the user wants

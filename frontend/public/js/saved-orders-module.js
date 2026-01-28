@@ -79,10 +79,29 @@ window.applySavedOrder = function(idx) {
     const list = JSON.parse(localStorage.getItem(key) || '[]');
     const o = list[idx];
     if (!o) return;
+    
     cart = {};
-    o.items.forEach(it => { cart[it.id] = it.qty; });
+    const unavailableItems = [];
+    const productList = window.products || products || [];
+    
+    o.items.forEach(it => {
+        const p = productList.find(px => px.id == it.id);
+        if (p) {
+            cart[it.id] = it.qty;
+        } else {
+            unavailableItems.push(it.name || `Item #${it.id}`);
+        }
+    });
+    
     updateCart();
-    showToast('✓ Order loaded');
+    
+    if (unavailableItems.length > 0) {
+        const itemNames = unavailableItems.slice(0, 3).join(', ');
+        const more = unavailableItems.length > 3 ? ` and ${unavailableItems.length - 3} more` : '';
+        showToast(`Some items unavailable: ${itemNames}${more}`);
+    } else {
+        showToast('✓ Order loaded');
+    }
 };
 
 function initSaveSheet() {

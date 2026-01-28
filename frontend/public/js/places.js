@@ -177,6 +177,17 @@ function initPlacesSheet() {
             if (!name) { showToast('Name your place'); return; }
             
             const list = getPlaces();
+            const exists = list.some(p => 
+                p &&
+                typeof p.name === 'string' &&
+                typeof p.address === 'string' &&
+                p.name.trim().toLowerCase() === name.toLowerCase() &&
+                p.address.trim().toLowerCase() === address.toLowerCase()
+            );
+            if (exists) {
+                showToast('Place already saved');
+                return;
+            }
             list.unshift({ 
                 name, 
                 address, 

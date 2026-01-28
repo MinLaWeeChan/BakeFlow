@@ -43,3 +43,35 @@ func MeRecentOrders(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"orders": orders})
 }
+
+func MeActiveOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	psid, ok := requirePSIDFromToken(w, r)
+	if !ok {
+		return
+	}
+
+	statuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
+	order, err := models.GetLatestOrderBySenderIDAndStatuses(psid, statuses)
+	if err != nil {
+		http.Error(w, "failed to load active order", http.StatusInternalServerError)
+		return
+	}
+
+	editable := false
+	if order != nil {
+		switch order.Status {
+		case "pending", "confirmed", "preparing":
+			editable = true
+		}
+		order.SenderID = ""
+		order.Items = nil
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"order": order, "editable": editable})
+}

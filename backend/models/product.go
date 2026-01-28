@@ -17,6 +17,8 @@ type Product struct {
 	Stock       int          `json:"stock"`
 	ImageURL    string       `json:"image_url"`
 	Status      string       `json:"status"` // draft, active, inactive, archived
+	AvgRating   float64      `json:"avg_rating"`
+	RatingCount int          `json:"rating_count"`
 	CreatedAt   time.Time    `json:"created_at"`
 	UpdatedAt   time.Time    `json:"updated_at"`
 	DeletedAt   sql.NullTime `json:"deleted_at,omitempty"`

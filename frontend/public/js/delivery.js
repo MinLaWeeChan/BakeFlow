@@ -7,6 +7,10 @@ let deliveryType = null;
 let geo = null;
 let map = null;
 let marker = null;
+let phoneInputInitialized = false;
+let errorModalInitialized = false;
+let errorModalLastFocus = null;
+let errorModalKeyHandler = null;
 
 // ========== Delivery Form ==========
 function openDeliveryForm() {
@@ -23,6 +27,7 @@ function openDeliveryForm() {
     document.getElementById('orderBar').style.display = 'block';
     adjustSafePadding();
     if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    updatePhoneUi();
 }
 
 function backToCart() {
@@ -164,6 +169,7 @@ function activateTab(which) {
 }
 
 function setupMapTabs() {
+    initPhoneInput();
     const hasLeaflet = !!window.L;
     activateTab(hasLeaflet ? 'map' : 'dir');
     
@@ -173,20 +179,188 @@ function setupMapTabs() {
     if (tabDir) tabDir.addEventListener('click', () => activateTab('dir'));
 }
 
+function sanitizeMyanmarPhoneInput(raw) {
+    const v = (raw || '').trim();
+    const hasPlus = v.startsWith('+');
+    const digits = v.replace(/\D/g, '');
+    if (!digits) return hasPlus ? '+' : '';
+    return hasPlus ? `+${digits}` : digits;
+}
+
+function normalizeMyanmarPhoneE164(raw) {
+    const s = sanitizeMyanmarPhoneInput(raw);
+    if (!s) return null;
+    if (/^\+959\d{9}$/.test(s)) return s;
+    if (/^09\d{9}$/.test(s)) return `+959${s.slice(2)}`;
+    return null;
+}
+
+function updatePhoneUi() {
+    const phoneEl = document.getElementById('customerPhone');
+    const errEl = document.getElementById('customerPhoneError');
+    const placeBtn = document.getElementById('placeOrderBtn');
+    if (!phoneEl || !placeBtn) return;
+
+    const raw = phoneEl.value || '';
+    const normalized = normalizeMyanmarPhoneE164(raw);
+    const isValid = !!normalized;
+
+    placeBtn.disabled = !isValid;
+
+    if (errEl) {
+        if (raw.trim() && !isValid) {
+            errEl.textContent = 'Enter 09xxxxxxxxx or +959xxxxxxxxx';
+            errEl.style.display = 'block';
+        } else {
+            errEl.textContent = '';
+            errEl.style.display = 'none';
+        }
+    }
+
+    if (raw.trim() && !isValid) {
+        phoneEl.classList.add('invalid');
+    } else {
+        phoneEl.classList.remove('invalid');
+    }
+}
+
+function initPhoneInput() {
+    if (phoneInputInitialized) return;
+    phoneInputInitialized = true;
+    const phoneEl = document.getElementById('customerPhone');
+    if (!phoneEl) return;
+    phoneEl.setAttribute('inputmode', 'numeric');
+    phoneEl.addEventListener('input', () => {
+        phoneEl.value = sanitizeMyanmarPhoneInput(phoneEl.value);
+        updatePhoneUi();
+    });
+    phoneEl.addEventListener('blur', () => {
+        const normalized = normalizeMyanmarPhoneE164(phoneEl.value);
+        if (normalized) {
+            phoneEl.value = normalized;
+        }
+        updatePhoneUi();
+    });
+    updatePhoneUi();
+}
+
 function appendNote(text) {
     const el = document.getElementById('orderNotes');
-    el.value = el.value ? (el.value + ' · ' + text) : text;
+    if (!el) return;
+    const quickNotes = ['Leave at door', 'Call on arrival'];
+    const current = (el.value || '')
+        .split(/\s*·\s*/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    const withoutQuick = current.filter(s => !quickNotes.includes(s));
+    const next = new Set(withoutQuick);
+    if (quickNotes.includes(text)) {
+        next.add(text);
+    } else if (text) {
+        next.add(text);
+    }
+    el.value = Array.from(next).join(' · ');
 }
 
 function showError(msg) {
     const b = document.getElementById('errorBanner');
-    b.textContent = msg;
-    b.style.display = 'block';
-    setTimeout(() => { b.style.display = 'none'; }, 3000);
+    if (b) {
+        b.textContent = msg;
+        b.style.display = 'block';
+        setTimeout(() => { b.style.display = 'none'; }, 3000);
+    }
+    showErrorModal(msg);
 }
 
 function getDeliveryType() { return deliveryType; }
 function getGeo() { return geo; }
+
+function initErrorModal() {
+    if (errorModalInitialized) return;
+    const modal = document.getElementById('errorModal');
+    if (!modal) return;
+    errorModalInitialized = true;
+
+    const backdrop = document.getElementById('bfModalBackdrop');
+    const closeBtn = document.getElementById('bfModalClose');
+    const okBtn = document.getElementById('bfModalOk');
+
+    const close = () => {
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('bf-modal-open');
+        if (errorModalKeyHandler) {
+            window.removeEventListener('keydown', errorModalKeyHandler);
+            errorModalKeyHandler = null;
+        }
+        if (errorModalLastFocus && typeof errorModalLastFocus.focus === 'function') {
+            errorModalLastFocus.focus();
+        }
+        errorModalLastFocus = null;
+    };
+
+    if (backdrop) backdrop.addEventListener('click', close);
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (okBtn) okBtn.addEventListener('click', close);
+
+    window.__bfCloseErrorModal = close;
+}
+
+function showErrorModal(msg) {
+    initErrorModal();
+    const modal = document.getElementById('errorModal');
+    if (!modal) return;
+
+    const titleEl = document.getElementById('bfModalTitle');
+    const textEl = document.getElementById('bfModalText');
+    const iconEl = document.getElementById('bfModalIcon');
+    const cardEl = modal.querySelector('.bf-modal-card');
+
+    const m = (msg || '').toString().trim();
+    const lower = m.toLowerCase();
+    let title = 'Error';
+    let icon = 'alert-triangle';
+
+    if (lower.includes("can’t be modified") || lower.includes("can't be modified") || lower.includes('order_locked') || lower.includes('already being prepared')) {
+        title = 'Order locked';
+        icon = 'lock';
+    } else if (lower.includes('insufficient') || lower.includes('out of stock') || lower.includes('no longer available')) {
+        title = 'Unavailable items';
+        icon = 'shopping-bag';
+    } else if (lower.includes('phone') && lower.includes('09')) {
+        title = 'Invalid phone number';
+        icon = 'phone-off';
+    } else if (lower.includes('location') || lower.includes('address')) {
+        title = 'Location issue';
+        icon = 'map-pin-off';
+    }
+
+    if (titleEl) titleEl.textContent = title;
+    if (textEl) textEl.textContent = m || 'Something went wrong. Please try again.';
+    if (iconEl) {
+        iconEl.innerHTML = `<i data-lucide="${icon}"></i>`;
+        if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    }
+
+    errorModalLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('bf-modal-open');
+
+    if (errorModalKeyHandler) {
+        window.removeEventListener('keydown', errorModalKeyHandler);
+    }
+    errorModalKeyHandler = (e) => {
+        if (e.key === 'Escape') {
+            if (window.__bfCloseErrorModal) window.__bfCloseErrorModal();
+        }
+    };
+    window.addEventListener('keydown', errorModalKeyHandler);
+
+    if (cardEl && typeof cardEl.focus === 'function') {
+        setTimeout(() => cardEl.focus(), 0);
+    }
+}
 
 // Export
 window.openDeliveryForm = openDeliveryForm;

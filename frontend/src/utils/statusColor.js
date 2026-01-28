@@ -1,10 +1,11 @@
 export function statusColor(status) {
   switch (status) {
-    case 'scheduled': return 'secondary';
+    case 'scheduled': return 'dark';
     case 'pending': return 'warning';
     case 'preparing': return 'primary';
     case 'ready': return 'info';
     case 'delivered': return 'success';
+    case 'cancelled': return 'danger';
     default: return 'secondary';
   }
 }

@@ -3,217 +3,450 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Order details</title>
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <title>Order Confirmed</title>
   <style>
     *{box-sizing:border-box}
     :root{
-      --brand:#2b6bf3;
-      --bg:#fff;
+      --brand:#1f2937;
+      --bg:#ffffff;
       --text:#111827;
       --muted:#6b7280;
-      --divider:#eef2f7;
+      --divider:#e5e7eb;
       --card:#ffffff;
-      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --success:#16a34a;
+      --success-light:#dcfce7;
     }
     body{
       margin:0;
       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;
-      background:#f7f8fc;
+      background:var(--bg);
       color:var(--text);
-      padding-bottom:calc(96px + var(--safe-bottom));
     }
-    .container{max-width:520px;margin:0 auto;padding:16px 12px 0}
-    .header{position:sticky;top:0;background:#f7f8fc;z-index:20;padding:10px 0 6px}
-    .header-row{display:flex;align-items:center;justify-content:space-between}
-    .title{font-weight:800;font-size:18px}
-    .icon-btn{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--divider);border-radius:12px;background:#fff;color:var(--text);font-weight:700}
-    .section{background:var(--card);border-radius:14px;box-shadow:0 2px 12px rgba(0,0,0,.06);padding:12px;margin:10px 0}
-    .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+    .page{max-width:640px;margin:0 auto;padding:28px 16px 40px}
+    .confirm-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:20px}
+    .success-icon{width:72px;height:72px;border-radius:999px;background:var(--success-light);color:var(--success);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800}
+    .confirm-title{font-size:24px;font-weight:800;letter-spacing:-0.01em}
+    .confirm-text{font-size:14px;color:var(--muted)}
     .muted{color:var(--muted);font-size:13px}
-    .pill-row{display:flex;gap:8px;margin-top:8px}
-    .pill{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;border:1px solid var(--divider);border-radius:999px;background:#fff;font-weight:800}
-    .divider{height:1px;background:var(--divider);margin:8px 0}
-    /* Items */
-    .item{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
-    .item-left{display:flex;align-items:center;gap:10px}
-    .qty{min-width:28px;height:28px;border-radius:999px;background:#f1f4fa;color:var(--brand);font-weight:800;display:flex;align-items:center;justify-content:center}
-    .item-name{font-weight:700}
-    .item-price{font-weight:800}
-    /* Sticky Reorder */
-    .reorder-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--divider);padding:10px 12px calc(10px + var(--safe-bottom));}
-    .reorder-btn{width:100%;height:56px;border:none;border-radius:14px;background:var(--brand);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+    .card{background:var(--card);border:1px solid var(--divider);border-radius:14px;padding:16px;margin:12px 0}
+    .card-title{font-weight:800;font-size:15px;margin-bottom:10px}
+    .summary-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px}
+    .summary-item{display:flex;flex-direction:column;gap:4px}
+    .summary-label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
+    .summary-value{font-size:14px;font-weight:700}
+    .items-header{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;padding:6px 0;border-bottom:1px solid var(--divider)}
+    .item-row{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--divider)}
+    .item-row:last-child{border-bottom:none}
+    .item-name{font-weight:600}
+    .item-qty,.item-unit,.item-total{text-align:right;font-weight:700}
+    .item-unit{color:var(--muted);font-weight:600}
+    .promo-rows{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+    .promo-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--success);font-weight:700}
+    .totals{display:flex;flex-direction:column;gap:8px}
+    .total-row{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+    .total-row .label{color:var(--muted)}
+    .total-row.discount{color:var(--success);font-weight:700}
+    .total-row.final{font-size:18px;font-weight:800}
+    .actions{display:flex;flex-direction:column;gap:10px;margin-top:16px}
+    .btn{width:100%;height:52px;border-radius:12px;border:1px solid var(--divider);background:#fff;color:var(--text);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+    .btn.primary{background:#111827;color:#fff;border:none}
+    .secondary-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btn.ghost{background:#fff}
+    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,0.5);backdrop-filter:blur(6px);z-index:40}
+    .modal.show{display:flex}
+    .modal-card{width:100%;max-width:420px;background:#fff;border-radius:18px;border:1px solid var(--divider);box-shadow:0 20px 60px rgba(15,23,42,0.2);padding:18px}
+    .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    .modal-title{font-size:16px;font-weight:800}
+    .modal-close{width:32px;height:32px;border-radius:10px;border:1px solid var(--divider);background:#fff;color:var(--text);font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .modal-text{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:16px}
+    .modal-actions{display:flex;gap:10px}
+    .modal-actions .btn{height:46px;font-size:14px}
+    .rating-content{display:flex;flex-direction:column;gap:14px}
+    .rating-item{border:1px solid var(--divider);border-radius:12px;padding:12px}
+    .rating-item-header{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+    .rating-img{width:48px;height:48px;border-radius:10px;object-fit:cover;background:#f3f4f6}
+    .rating-item-name{font-weight:700}
+    .rating-stars{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+    .star-btn{border:1px solid var(--divider);background:#fff;border-radius:999px;padding:6px 12px;font-weight:700;cursor:pointer}
+    .star-btn.active{background:#111827;color:#fff;border-color:#111827}
+    .rating-comment{width:100%;min-height:64px;border:1px solid var(--divider);border-radius:10px;padding:8px;font-size:13px}
+    .rating-message{font-size:13px;color:var(--muted)}
+    .rating-actions{margin-top:8px}
+    @media (max-width:520px){
+      .summary-grid{grid-template-columns:1fr}
+      .items-header{display:none}
+      .item-row{grid-template-columns:1fr auto;grid-template-areas:"name total" "qty unit";gap:6px}
+      .item-name{grid-area:name}
+      .item-total{grid-area:total}
+      .item-qty{grid-area:qty;text-align:left;font-weight:600}
+      .item-unit{grid-area:unit;text-align:right}
+      .secondary-actions{grid-template-columns:1fr}
+    }
+    @media print{
+      body{background:#fff}
+      .page{padding:0}
+      .actions{display:none}
+      .card{box-shadow:none}
+    }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header class="header">
-      <div class="header-row">
-        <button class="icon-btn" id="backBtn"><i data-lucide="arrow-left"></i><span>Back</span></button>
-        <div class="title">Order details</div>
-        <a class="icon-btn" id="contactBtn"><i data-lucide="phone"></i><span>Contact</span></a>
-      </div>
-    </header>
-
-    <!-- Order info -->
-    <section class="section">
-      <div class="row">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span class="item-name">Order #<span id="orderId">—</span></span>
-            <button id="copyId" class="icon-btn" style="padding:6px 8px;border-radius:10px"><i data-lucide="copy"></i><span style="font-weight:700;font-size:13px">Copy</span></button>
-          </div>
-          <div class="muted" id="storeName">Store —</div>
-        </div>
-        <div class="muted" id="orderDate">—</div>
-      </div>
+  <main class="page">
+    <section class="confirm-header">
+      <div class="success-icon">✓</div>
+      <div class="confirm-title">Order Confirmed</div>
+      <div class="confirm-text">Thank you! Your order has been placed successfully.</div>
     </section>
 
-    <!-- Quick actions -->
-    <section class="section">
-      <div class="pill-row">
-        <button class="pill" id="callBtn"><i data-lucide="phone"></i><span>Call</span></button>
-        <button class="pill" id="rateBtn"><i data-lucide="star"></i><span>Rate</span></button>
-      </div>
-    </section>
-
-    <!-- Delivery -->
-    <section class="section">
-      <div class="row">
-        <div>
-          <div style="font-weight:800" id="deliveryStatus">On the way</div>
-          <div class="muted" id="deliveryMsg">Estimated arrival soon</div>
+    <section class="card">
+      <div class="card-title">Order summary</div>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-label">Order ID</div>
+          <div class="summary-value" id="orderId">—</div>
         </div>
-        <button class="icon-btn" id="rateDelivery"><i data-lucide="thumbs-up"></i><span>Rate</span></button>
-      </div>
-      <div class="divider"></div>
-      <div class="row">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <i data-lucide="hand-coins"></i>
-          <div>
-            <div style="font-weight:700">Add tip</div>
-            <div class="muted">Support the courier</div>
-          </div>
+        <div class="summary-item">
+          <div class="summary-label">Order date</div>
+          <div class="summary-value" id="orderDate">—</div>
         </div>
-        <button class="icon-btn" id="addTip"><i data-lucide="plus"></i><span>Add</span></button>
-      </div>
-    </section>
-
-    <!-- Customer info -->
-    <section class="section">
-      <div style="font-weight:800;margin-bottom:6px">Customer</div>
-      <div class="row"><div id="custName">—</div><div class="muted" id="custPhone">—</div></div>
-      <div class="divider"></div>
-      <div style="display:flex;align-items:flex-start;gap:8px;">
-        <i data-lucide="map-pin"></i>
-        <div>
-          <div id="custAddress">—</div>
-          <div class="muted" id="custNote"></div>
+        <div class="summary-item">
+          <div class="summary-label">Delivery method</div>
+          <div class="summary-value" id="deliveryMethod">—</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-label">Payment status</div>
+          <div class="summary-value" id="paymentStatus">Pay on delivery</div>
         </div>
       </div>
     </section>
 
-    <!-- Items -->
-    <section class="section">
-      <div style="font-weight:800;margin-bottom:6px">Items</div>
+    <section class="card">
+      <div class="card-title">Itemized list</div>
+      <div class="items-header">
+        <div>Item</div>
+        <div style="text-align:right;">Qty</div>
+        <div style="text-align:right;">Price</div>
+        <div style="text-align:right;">Total</div>
+      </div>
       <div id="items"></div>
+      <div id="promoRows" class="promo-rows"></div>
     </section>
 
-  </div>
+    <section class="card">
+      <div class="card-title">Price breakdown</div>
+      <div class="totals">
+        <div class="total-row">
+          <span class="label">Subtotal</span>
+          <span id="subtotal">—</span>
+        </div>
+        <div class="total-row discount" id="discountRow" style="display:none;">
+          <span>Discounts</span>
+          <span id="discount">—</span>
+        </div>
+        <div class="total-row" id="deliveryFeeRow" style="display:none;">
+          <span class="label">Delivery fee</span>
+          <span id="deliveryFee">—</span>
+        </div>
+        <div class="total-row final">
+          <span>Total</span>
+          <span id="finalTotal">—</span>
+        </div>
+      </div>
+    </section>
 
-  <!-- Sticky reorder -->
-  <div class="reorder-bar">
-    <button class="reorder-btn" id="reorderBtn"><i data-lucide="refresh-cw"></i><span>Reorder</span></button>
+    <section class="card" id="ratingCard" style="display:none;">
+      <div class="card-title">Rate your items</div>
+      <div class="rating-content" id="ratingContent"></div>
+      <div class="rating-actions">
+        <button class="btn primary" id="submitRatingBtn" type="button">Submit Ratings</button>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button class="btn primary" id="downloadPdfBtn">Download Invoice (PDF)</button>
+      <div class="secondary-actions">
+        <button class="btn" id="saveImageBtn">Save as Image</button>
+        <a class="btn ghost" id="backHomeBtn" href="/order-form.html">Back to Home</a>
+      </div>
+    </section>
+  </main>
+  <div class="modal" id="saveImageModal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="saveImageTitle">
+      <div class="modal-header">
+        <div class="modal-title" id="saveImageTitle">Save as Image</div>
+        <button class="modal-close" type="button" id="saveImageClose">✕</button>
+      </div>
+      <div class="modal-text">Take a screenshot of this invoice on your device. It will save exactly as shown.</div>
+      <div class="modal-actions">
+        <button class="btn primary" id="saveImageDone" type="button">Got it</button>
+        <button class="btn" id="saveImageSecondary" type="button">Close</button>
+      </div>
+    </div>
   </div>
 
   <script>
     const qs = new URLSearchParams(location.search);
     const orderId = qs.get('order_id') || '—';
-    const userId = qs.get('user_id') || 'guest';
-    const contactPhone = qs.get('store_phone') || '';
-    const storeName = qs.get('store_name') || 'BakeFlow Bakery';
-
-    // Populate header actions
+    let resolvedUserId = qs.get('user_id') || '';
+    try {
+      if (!resolvedUserId || resolvedUserId === 'guest') {
+        resolvedUserId = localStorage.getItem('bf_psid') || localStorage.getItem('bf_user_id') || '';
+      }
+    } catch (e) {}
+    const tok = qs.get('t') || (() => {
+      try { return localStorage.getItem('bf_webview_token') || ''; } catch (e) { return ''; }
+    })();
+    const returnParams = new URLSearchParams();
+    if (resolvedUserId && resolvedUserId !== 'guest') returnParams.set('user_id', resolvedUserId);
+    if (tok) returnParams.set('t', tok);
+    const returnUrl = '/order-form.html' + (returnParams.toString() ? `?${returnParams.toString()}` : '');
+    const userId = resolvedUserId || 'guest';
     document.getElementById('orderId').textContent = orderId;
-    document.getElementById('storeName').textContent = storeName;
-    document.getElementById('contactBtn').href = contactPhone ? ('tel:' + contactPhone) : '#';
-
-    // Copy order id
-    document.getElementById('copyId').addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(String(orderId)); alert('Order number copied'); } catch(e){ alert('Copy failed'); }
+    document.getElementById('backHomeBtn').setAttribute('href', returnUrl);
+    const goBackToOrderForm = () => { window.location.href = returnUrl; };
+    document.getElementById('downloadPdfBtn').addEventListener('click', () => {
+      window.__bfAfterPrintReturn = true;
+      window.print();
     });
-    document.getElementById('backBtn').addEventListener('click', () => history.back());
-    document.getElementById('callBtn').addEventListener('click', () => { if (contactPhone) location.href = 'tel:' + contactPhone; });
-    document.getElementById('rateBtn').addEventListener('click', () => alert('Thanks for your feedback!'));
-    document.getElementById('rateDelivery').addEventListener('click', () => alert('Delivery rated.'));
-    document.getElementById('addTip').addEventListener('click', () => alert('Tip added.'));
+    document.getElementById('saveImageBtn').addEventListener('click', () => {
+      document.getElementById('saveImageModal').classList.add('show');
+    });
+    const closeSaveImage = () => {
+      document.getElementById('saveImageModal').classList.remove('show');
+    };
+    document.getElementById('saveImageClose').addEventListener('click', closeSaveImage);
+    document.getElementById('saveImageDone').addEventListener('click', () => {
+      closeSaveImage();
+      goBackToOrderForm();
+    });
+    document.getElementById('saveImageSecondary').addEventListener('click', closeSaveImage);
+    document.getElementById('saveImageModal').addEventListener('click', (e) => {
+      if (e.target.id === 'saveImageModal') closeSaveImage();
+    });
+    window.addEventListener('afterprint', () => {
+      if (window.__bfAfterPrintReturn) {
+        window.__bfAfterPrintReturn = false;
+        goBackToOrderForm();
+      }
+    });
 
     // Load order details
     async function loadDetails(){
       let data = null;
+      let stored = null;
+      try {
+        const storedRaw = localStorage.getItem(`bf_invoice_${orderId}`);
+        stored = storedRaw ? JSON.parse(storedRaw) : null;
+      } catch (e) {
+        stored = null;
+      }
+      if (stored) {
+        data = stored;
+      }
       try {
         const res = await fetch('/api/orders/' + encodeURIComponent(orderId));
         if (res.ok) data = await res.json();
       } catch(e) { /* ignore */ }
-      if (!data || !data.items){
-        // fallback sample
+      const paramNumber = (key) => {
+        const raw = qs.get(key);
+        if (raw === null || raw === '') return null;
+        const num = Number(raw);
+        return Number.isFinite(num) ? num : null;
+      };
+      if (!data || !Array.isArray(data.items)){
         data = {
-          created_at: new Date().toISOString(),
-          customer_name: qs.get('customer_name') || 'Customer',
-          customer_phone: qs.get('customer_phone') || '',
-          address: qs.get('address') || 'Pickup at store',
-          notes: qs.get('notes') || '',
-          items: [
-            { name:'Chocolate Cake', qty:1, price:25.99 },
-            { name:'Vanilla Cupcake', qty:6, price:3.99 }
-          ]
+          created_at: stored?.created_at || new Date().toISOString(),
+          customer_name: qs.get('customer_name') || stored?.customer_name || 'Customer',
+          customer_phone: qs.get('customer_phone') || stored?.customer_phone || '',
+          address: qs.get('address') || stored?.address || 'Pickup at store',
+          notes: qs.get('notes') || stored?.notes || '',
+          delivery_type: qs.get('delivery_type') || stored?.delivery_type || 'Delivery',
+          payment_status: stored?.payment_status || 'Pay on delivery',
+          subtotal: stored?.subtotal ?? paramNumber('subtotal'),
+          discount: stored?.discount ?? paramNumber('discount'),
+          delivery_fee: stored?.delivery_fee ?? paramNumber('delivery_fee'),
+          total: stored?.total ?? paramNumber('total') ?? paramNumber('total_amount'),
+          promotions: stored?.promotions || [],
+          items: stored?.items || []
         };
+      } else {
+        const subtotalParam = paramNumber('subtotal');
+        const discountParam = paramNumber('discount');
+        const deliveryFeeParam = paramNumber('delivery_fee');
+        const totalParam = paramNumber('total') ?? paramNumber('total_amount');
+        if (subtotalParam !== null) data.subtotal = subtotalParam;
+        if (discountParam !== null) data.discount = discountParam;
+        if (deliveryFeeParam !== null) data.delivery_fee = deliveryFeeParam;
+        if (totalParam !== null) data.total = totalParam;
+        if (stored?.promotions && !data.promotions) data.promotions = stored.promotions;
       }
       renderDetails(data);
     }
 
     function renderDetails(d){
+      const formatMoney = (value) => {
+        const num = Number(value);
+        return Number.isFinite(num) ? `$${num.toFixed(2)}` : '—';
+      };
       const dt = new Date(d.created_at || Date.now());
       document.getElementById('orderDate').textContent = dt.toLocaleString();
-      document.getElementById('custName').textContent = d.customer_name || '—';
-      document.getElementById('custPhone').textContent = d.customer_phone || '—';
-      document.getElementById('custAddress').textContent = d.address || '—';
-      document.getElementById('custNote').textContent = d.notes ? ('Note: ' + d.notes) : '';
+      const deliveryValue = d.delivery_type || (String(d.address || '').toLowerCase().includes('pickup') ? 'Pick Up' : 'Delivery');
+      document.getElementById('deliveryMethod').textContent = deliveryValue;
+      document.getElementById('paymentStatus').textContent = d.payment_status || 'Pay on delivery';
       const itemsWrap = document.getElementById('items');
-      const rows = (d.items || []).map(it => `
-        <div class="item">
-          <div class="item-left">
-            <div class="qty">${it.qty}</div>
-            <div class="item-name">${it.name}</div>
+      const rows = (d.items || []).map(it => {
+        const qty = Number(it.qty || it.quantity || 0);
+        const unit = Number(it.price ?? it.unit_price ?? 0);
+        const lineTotal = Number(it.line_total ?? it.total ?? (Number.isFinite(unit) ? unit * qty : NaN));
+        return `
+          <div class="item-row">
+            <div class="item-name">${it.name || it.product || '—'}</div>
+            <div class="item-qty">${qty || '—'}</div>
+            <div class="item-unit">${formatMoney(unit)}</div>
+            <div class="item-total">${formatMoney(lineTotal)}</div>
           </div>
-          <div class="item-price">$${Number(it.price).toFixed(2)}</div>
-        </div>
-        <div class="divider"></div>
-      `).join('');
-      itemsWrap.innerHTML = rows;
-      if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+        `;
+      }).join('');
+      itemsWrap.innerHTML = rows || '<div class="muted">No items found.</div>';
+
+      const promoRowsEl = document.getElementById('promoRows');
+      const promos = Array.isArray(d.promotions) ? d.promotions
+        : Array.isArray(d.applied_promotions) ? d.applied_promotions
+        : Array.isArray(d.appliedPromotions) ? d.appliedPromotions
+        : [];
+      promoRowsEl.innerHTML = promos.map(p => {
+        const label = typeof p === 'string' ? p : (p.label || p.name || 'Promotion');
+        const amount = typeof p === 'object' && p !== null ? p.amount : null;
+        return `
+          <div class="promo-row">
+            <span>${label}</span>
+            <span>${amount !== null ? `- ${formatMoney(amount)}` : ''}</span>
+          </div>
+        `;
+      }).join('');
+
+      const subtotal = Number(d.subtotal);
+      const discount = Number(d.discount);
+      const deliveryFee = Number(d.delivery_fee ?? d.deliveryFee);
+      const total = Number(d.total ?? d.total_amount);
+
+      document.getElementById('subtotal').textContent = formatMoney(subtotal);
+      if (Number.isFinite(discount) && discount > 0) {
+        document.getElementById('discountRow').style.display = 'flex';
+        document.getElementById('discount').textContent = `- ${formatMoney(discount)}`;
+      }
+      if (Number.isFinite(deliveryFee) && deliveryFee > 0) {
+        document.getElementById('deliveryFeeRow').style.display = 'flex';
+        document.getElementById('deliveryFee').textContent = formatMoney(deliveryFee);
+      }
+      document.getElementById('finalTotal').textContent = formatMoney(total);
     }
 
-    // Reorder: save template and open order form with autoload
-    document.getElementById('reorderBtn').addEventListener('click', () => {
+    async function loadRating(){
+      const ratingCard = document.getElementById('ratingCard');
+      const ratingContent = document.getElementById('ratingContent');
+      const submitBtn = document.getElementById('submitRatingBtn');
+      if (!orderId || orderId === '—') return;
+      const params = new URLSearchParams();
+      if (tok) params.set('t', tok);
+      if (userId && userId !== 'guest') params.set('user_id', userId);
+      if (!params.toString()) return;
       try {
-        const key = `saved_orders_${userId}`;
-        const list = JSON.parse(localStorage.getItem(key) || '[]');
-        const items = Array.from(document.querySelectorAll('#items .item')).map(row => {
-          const qty = Number(row.querySelector('.qty').textContent.trim());
-          const name = row.querySelector('.item-name').textContent.trim();
-          const priceText = row.nextElementSibling ? row.nextElementSibling.previousElementSibling : row; // just safe
-          return { name, qty };
+        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/rating-status?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok) return;
+        ratingCard.style.display = 'block';
+        if (!data.can_rate) {
+          ratingContent.innerHTML = `<div class="rating-message">Ratings open after delivery.</div>`;
+          submitBtn.style.display = 'none';
+          return;
+        }
+        const unrated = Array.isArray(data.unrated_items) ? data.unrated_items : [];
+        if (unrated.length === 0) {
+          ratingContent.innerHTML = `<div class="rating-message">Thanks! You already rated this order.</div>`;
+          submitBtn.style.display = 'none';
+          return;
+        }
+        const ratings = {};
+        ratingContent.innerHTML = unrated.map(item => {
+          ratings[item.product_id] = { stars: 0, comment: '' };
+          const price = Number(item.price);
+          return `
+            <div class="rating-item" data-product-id="${item.product_id}">
+              <div class="rating-item-header">
+                <img class="rating-img" src="${item.image_url || '/images/placeholder.png'}" alt="">
+                <div>
+                  <div class="rating-item-name">${item.name || 'Item'}</div>
+                  <div class="muted">${Number.isFinite(price) ? `$${price.toFixed(2)}` : ''}</div>
+                </div>
+              </div>
+              <div class="rating-stars" data-product-id="${item.product_id}">
+                <button type="button" class="star-btn" data-star="1">⭐ 1</button>
+                <button type="button" class="star-btn" data-star="2">⭐ 2</button>
+                <button type="button" class="star-btn" data-star="3">⭐ 3</button>
+                <button type="button" class="star-btn" data-star="4">⭐ 4</button>
+                <button type="button" class="star-btn" data-star="5">⭐ 5</button>
+              </div>
+              <textarea class="rating-comment" placeholder="Optional comment"></textarea>
+            </div>
+          `;
+        }).join('');
+        ratingContent.querySelectorAll('.rating-stars').forEach(group => {
+          group.addEventListener('click', (e) => {
+            const btn = e.target.closest('.star-btn');
+            if (!btn) return;
+            const stars = Number(btn.getAttribute('data-star')) || 0;
+            const pid = Number(group.getAttribute('data-product-id'));
+            if (!ratings[pid]) return;
+            ratings[pid].stars = stars;
+            group.querySelectorAll('.star-btn').forEach(b => {
+              const s = Number(b.getAttribute('data-star')) || 0;
+              b.classList.toggle('active', s <= stars);
+            });
+          });
         });
-        const payload = { name: `Reorder #${orderId}`, items, created_at: new Date().toISOString() };
-        list.unshift(payload);
-        localStorage.setItem(key, JSON.stringify(list));
-      } catch(e) {}
-      const url = `/order-form.html?user_id=${encodeURIComponent(userId)}&reorder=1`;
-      location.href = url;
-    });
+        ratingContent.querySelectorAll('.rating-item').forEach(itemEl => {
+          const pid = Number(itemEl.getAttribute('data-product-id'));
+          const textarea = itemEl.querySelector('.rating-comment');
+          if (!textarea || !ratings[pid]) return;
+          textarea.addEventListener('input', (e) => {
+            ratings[pid].comment = e.target.value || '';
+          });
+        });
+        submitBtn.style.display = 'inline-flex';
+        submitBtn.onclick = async () => {
+          const payloadRatings = Object.keys(ratings).map(key => {
+            const pid = Number(key);
+            return { product_id: pid, stars: ratings[pid].stars || 0, comment: ratings[pid].comment || '' };
+          });
+          const missing = payloadRatings.some(r => !r.stars);
+          if (missing) {
+            alert('Please rate all items before submitting.');
+            return;
+          }
+          submitBtn.disabled = true;
+          submitBtn.textContent = 'Submitting...';
+          try {
+            const res = await fetch(`/api/ratings/bulk?${params.toString()}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ order_id: Number(orderId), ratings: payloadRatings })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to submit ratings');
+            ratingContent.innerHTML = `<div class="rating-message">Thanks for your feedback!</div>`;
+            submitBtn.style.display = 'none';
+          } catch (e) {
+            alert(e.message || 'Failed to submit ratings');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Ratings';
+          }
+        };
+      } catch (e) {}
+    }
 
     loadDetails();
+    loadRating();
   </script>
 </body>
 </html>

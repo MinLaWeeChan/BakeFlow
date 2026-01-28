@@ -35,6 +35,19 @@
             }, function error(err) {
                 console.log('❌ Messenger Extensions error:', err);
             });
+            try {
+                var appIdMeta = document.querySelector('meta[property="fb:app_id"]');
+                var appId = appIdMeta ? appIdMeta.getAttribute('content') : '';
+                if (appId && MessengerExtensions.getContext) {
+                    MessengerExtensions.getContext(appId, function success(context) {
+                        if (context && context.psid) {
+                            localStorage.setItem('bf_psid', context.psid);
+                        }
+                    }, function error(err) {
+                        console.log('❌ Messenger Extensions getContext error:', err);
+                    });
+                }
+            } catch (e) {}
         };
     </script>
     
@@ -547,12 +560,99 @@
             color: var(--gray-900);
         }
         .reorder-item-unavailable {
-            opacity: 0.5;
+            opacity: 0.7;
+            background: #fff5f5;
+            border-radius: 8px;
+            padding: 8px;
+            margin: -8px;
         }
-        .reorder-item-unavailable .reorder-item-name::after {
-            content: ' (Unavailable)';
-            color: var(--danger);
-            font-weight: 400;
+        .reorder-item-unavailable .reorder-item-name {
+            text-decoration: line-through;
+            color: var(--gray-500);
+        }
+        .unavailable-badge {
+            display: inline-block;
+            background: #fee2e2;
+            color: #dc2626;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            text-decoration: none;
+        }
+        .replacement-section {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--gray-200);
+        }
+        .replacement-label {
+            font-size: 11px;
+            color: var(--gray-500);
+            margin-bottom: 4px;
+        }
+        .replacement-select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 13px;
+            background: #fff;
+            color: var(--gray-900);
+            cursor: pointer;
+        }
+        .replacement-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .remove-item-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 6px;
+            padding: 4px 8px;
+            border: none;
+            background: transparent;
+            color: var(--gray-500);
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .remove-item-btn:hover {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .custom-note-section {
+            margin-top: 6px;
+        }
+        .custom-note-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--primary);
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 2px 0;
+        }
+        .custom-note-toggle:hover {
+            text-decoration: underline;
+        }
+        .custom-note-input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        .custom-note-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .custom-note-input::placeholder {
+            color: var(--gray-400);
         }
         .price-change {
             font-size: 12px;
@@ -791,6 +891,10 @@
         <div class="sheet-box">
             <div class="sheet-handle"></div>
             <div class="sheet-title">Reorder</div>
+            <div id="reorderWarning" class="unavailable-warning" style="display:none;background:#fef3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px;color:#856404;">
+                <i data-lucide="alert-triangle" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px;"></i>
+                <span id="reorderWarningText">Some items are no longer available. You can replace them or remove from order.</span>
+            </div>
             <div id="reorderItems" class="reorder-items"></div>
             <div class="reorder-total">
                 <span class="reorder-total-label">Total</span>
@@ -1004,12 +1108,15 @@
             const arr = Array.isArray(items) ? items : [];
             return arr.map(it => {
                 const pid = getItemProductId(it);
+                const p = getProductForItem(it);
+                // Only include available items
+                if (!p) return null;
                 const qty = getItemQty(it);
                 const price = getItemUnitPrice(it);
                 const name = it && it.name ? it.name : getItemDisplayName(it);
                 const image = it && it.image ? it.image : getItemImage(it);
                 return { id: pid, qty, price, name, image };
-            }).filter(it => it.id != null);
+            }).filter(it => it != null && it.id != null);
         }
 
         function formatPrice(price) {
@@ -1139,49 +1246,219 @@
             setTimeout(() => { t.classList.remove('show'); }, 2000);
         }
 
+        // Reorder state for tracking replacements and notes
+        let reorderState = {
+            items: [],
+            replacements: {},  // originalIdx -> replacement product id
+            removedItems: {},  // originalIdx -> true
+            customNotes: {}    // originalIdx -> note string
+        };
+
         // Reorder
         function openReorder(idx) {
             selectedOrderIdx = idx;
             const order = savedOrders[idx];
             const items = order.items || [];
 
+            // Reset reorder state
+            reorderState = {
+                items: items.slice(),
+                replacements: {},
+                removedItems: {},
+                customNotes: {}
+            };
+
+            renderReorderItems();
+            openSheet('reorderSheet');
+        }
+
+        function renderReorderItems() {
+            const items = reorderState.items;
             let total = 0;
             let html = '';
-            items.forEach(it => {
-                const p = getProductForItem(it);
-                const pid = getItemProductId(it);
+            const unavailableItems = [];
+            
+            items.forEach((it, idx) => {
+                // Check if item was removed
+                if (reorderState.removedItems[idx]) return;
+
+                // Check if item has a replacement
+                const replacementId = reorderState.replacements[idx];
+                let p, pid, available, price, img, name;
+                
+                if (replacementId) {
+                    // Using replacement product
+                    p = getProductById(replacementId);
+                    pid = replacementId;
+                    available = true;
+                    price = p ? Number(p.price) : 0;
+                    img = p && p.image_url ? p.image_url : getItemImage(it);
+                    name = p ? p.name : 'Replacement';
+                } else {
+                    // Original item
+                    p = getProductForItem(it);
+                    pid = getItemProductId(it);
+                    available = !!p;
+                    price = getItemUnitPrice(it);
+                    img = getItemImage(it);
+                    name = getItemDisplayName(it);
+                }
+
                 const qty = getItemQty(it);
-                const available = !!p;
-                const price = getItemUnitPrice(it);
-                const img = getItemImage(it);
-                const name = getItemDisplayName(it);
                 const lineTotal = price * qty;
-                if (available || price > 0) total += lineTotal;
+                
+                if (available) {
+                    total += lineTotal;
+                } else {
+                    unavailableItems.push({ name, idx });
+                }
 
                 const original = it && it.original_price != null ? Number(it.original_price) : NaN;
                 const current = p ? Number(p.price) : NaN;
-                const priceChanged = Number.isFinite(original) && Number.isFinite(current) && original !== current;
+                const priceChanged = !replacementId && Number.isFinite(original) && Number.isFinite(current) && original !== current;
+                
+                const customNote = reorderState.customNotes[idx] || '';
+                const hasNote = customNote.length > 0;
 
-                html += `
-                    <div class="reorder-item ${available ? '' : 'reorder-item-unavailable'}">
-                        <img class="reorder-item-thumb" src="${img}" alt="">
-                        <div class="reorder-item-info">
-                            <div class="reorder-item-name">${escapeHtml(name)}</div>
-                            <div class="reorder-item-qty">Qty: ${qty}</div>
-                            ${priceChanged ? `<div class="price-change"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> Price changed</div>` : ''}
+                if (available) {
+                    // Available item
+                    html += `
+                        <div class="reorder-item" data-idx="${idx}">
+                            <img class="reorder-item-thumb" src="${img}" alt="">
+                            <div class="reorder-item-info">
+                                <div class="reorder-item-name">${escapeHtml(name)}</div>
+                                <div class="reorder-item-qty">Qty: ${qty}</div>
+                                ${priceChanged ? `<div class="price-change"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> Price changed</div>` : ''}
+                                ${hasNote ? `<div style="font-size:11px;color:var(--primary);margin-top:2px;"><i data-lucide="message-square" style="width:10px;height:10px;display:inline;"></i> ${escapeHtml(customNote)}</div>` : ''}
+                                <div class="custom-note-section">
+                                    <button class="custom-note-toggle" onclick="toggleCustomNote(${idx})">
+                                        <i data-lucide="edit-3" style="width:10px;height:10px;"></i>
+                                        ${hasNote ? 'Edit note' : 'Add note (flavor, etc.)'}
+                                    </button>
+                                    <input type="text" class="custom-note-input" id="note-${idx}" 
+                                           placeholder="e.g., Chocolate flavor, no nuts..." 
+                                           value="${escapeHtml(customNote)}"
+                                           style="display:none;"
+                                           onchange="updateCustomNote(${idx}, this.value)"
+                                           onblur="hideNoteInput(${idx})">
+                                </div>
+                            </div>
+                            <div class="reorder-item-price">${formatPrice(lineTotal)}</div>
                         </div>
-                        <div class="reorder-item-price">${available ? formatPrice(lineTotal) : '—'}</div>
-                    </div>
-                `;
+                    `;
+                } else {
+                    // Unavailable item - show replacement options
+                    const replacementOptions = getReplacementOptions(it);
+                    html += `
+                        <div class="reorder-item reorder-item-unavailable" data-idx="${idx}">
+                            <img class="reorder-item-thumb" src="${img}" alt="" style="opacity:0.5;">
+                            <div class="reorder-item-info">
+                                <div class="reorder-item-name">
+                                    ${escapeHtml(name)}
+                                    <span class="unavailable-badge">Unavailable</span>
+                                </div>
+                                <div class="reorder-item-qty">Qty: ${qty}</div>
+                                <div class="replacement-section">
+                                    <div class="replacement-label">Replace with:</div>
+                                    <select class="replacement-select" onchange="setReplacement(${idx}, this.value)">
+                                        <option value="">— Select replacement —</option>
+                                        ${replacementOptions.map(rp => `<option value="${rp.id}">${escapeHtml(rp.name)} ($${rp.price.toFixed(2)})</option>`).join('')}
+                                    </select>
+                                    <button class="remove-item-btn" onclick="removeItem(${idx})">
+                                        <i data-lucide="x" style="width:10px;height:10px;"></i>
+                                        Remove from order
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="reorder-item-price">—</div>
+                        </div>
+                    `;
+                }
             });
+
+            // Check if all items are removed
+            const activeItems = items.filter((_, idx) => !reorderState.removedItems[idx]);
+            if (activeItems.length === 0) {
+                html = `<div style="text-align:center;padding:20px;color:var(--gray-500);">
+                    <i data-lucide="shopping-bag" style="width:32px;height:32px;margin-bottom:8px;opacity:0.5;"></i>
+                    <p>No items in order</p>
+                </div>`;
+            }
 
             document.getElementById('reorderItems').innerHTML = html;
             document.getElementById('reorderTotal').textContent = formatPrice(total);
-            openSheet('reorderSheet');
+            
+            // Show/hide unavailable warning
+            const warningEl = document.getElementById('reorderWarning');
+            if (unavailableItems.length > 0) {
+                warningEl.style.display = 'block';
+            } else {
+                warningEl.style.display = 'none';
+            }
+            
+            // Update confirm button state
+            const confirmBtn = document.getElementById('reorderConfirm');
+            const hasAvailableItems = items.some((it, idx) => {
+                if (reorderState.removedItems[idx]) return false;
+                if (reorderState.replacements[idx]) return true;
+                return !!getProductForItem(it);
+            });
+            confirmBtn.disabled = !hasAvailableItems;
+            confirmBtn.style.opacity = hasAvailableItems ? '1' : '0.5';
+            
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function getReplacementOptions(unavailableItem) {
+            // Return available products as replacement options
+            // Could be smarter by filtering by category or similar items
+            return products.filter(p => p.id != null).slice(0, 20);
+        }
+
+        function setReplacement(idx, productId) {
+            if (productId) {
+                reorderState.replacements[idx] = parseInt(productId);
+                delete reorderState.removedItems[idx];
+            } else {
+                delete reorderState.replacements[idx];
+            }
+            renderReorderItems();
+        }
+
+        function removeItem(idx) {
+            reorderState.removedItems[idx] = true;
+            delete reorderState.replacements[idx];
+            renderReorderItems();
+        }
+
+        function toggleCustomNote(idx) {
+            const input = document.getElementById(`note-${idx}`);
+            if (input) {
+                if (input.style.display === 'none') {
+                    input.style.display = 'block';
+                    input.focus();
+                } else {
+                    input.style.display = 'none';
+                }
+            }
+        }
+
+        function hideNoteInput(idx) {
+            setTimeout(() => {
+                const input = document.getElementById(`note-${idx}`);
+                if (input) input.style.display = 'none';
+            }, 200);
+        }
+
+        function updateCustomNote(idx, note) {
+            reorderState.customNotes[idx] = note.trim();
+            renderReorderItems();
         }
 
         document.getElementById('reorderConfirm').addEventListener('click', function() {
             const btn = this;
+            if (btn.disabled) return;
+            
             btn.classList.add('loading');
             btn.innerHTML = '<span>Adding...</span>';
 
@@ -1191,11 +1468,62 @@
                 order.last_used = new Date().toISOString();
                 saveSavedOrders();
 
+                // Build cart items with replacements and notes
+                const cartItems = [];
+                reorderState.items.forEach((it, idx) => {
+                    // Skip removed items
+                    if (reorderState.removedItems[idx]) return;
+                    
+                    const qty = getItemQty(it);
+                    const customNote = reorderState.customNotes[idx] || '';
+                    
+                    // Check for replacement
+                    const replacementId = reorderState.replacements[idx];
+                    if (replacementId) {
+                        const p = getProductById(replacementId);
+                        if (p) {
+                            cartItems.push({
+                                id: p.id,
+                                qty: qty,
+                                price: Number(p.price) || 0,
+                                name: p.name,
+                                image: p.image_url || '',
+                                note: customNote
+                            });
+                        }
+                    } else {
+                        // Original item - only if available
+                        const p = getProductForItem(it);
+                        if (p) {
+                            cartItems.push({
+                                id: p.id,
+                                qty: qty,
+                                price: Number(p.price) || 0,
+                                name: p.name,
+                                image: p.image_url || '',
+                                note: customNote
+                            });
+                        }
+                    }
+                });
+
                 // Save cart to localStorage and redirect
                 const userId = getUserId();
                 const tok = getToken();
                 const cartKey = tok ? `pending_reorder_t_${tok}` : `pending_reorder_${userId}`;
-                localStorage.setItem(cartKey, JSON.stringify(normalizeItemsForOrderForm(order.items)));
+                localStorage.setItem(cartKey, JSON.stringify(cartItems));
+                
+                // Save custom notes separately if any exist
+                const notesKey = tok ? `pending_notes_t_${tok}` : `pending_notes_${userId}`;
+                const notes = {};
+                cartItems.forEach(item => {
+                    if (item.note) {
+                        notes[item.id] = item.note;
+                    }
+                });
+                if (Object.keys(notes).length > 0) {
+                    localStorage.setItem(notesKey, JSON.stringify(notes));
+                }
 
                 // Redirect to order form
                 const qs = new URLSearchParams();

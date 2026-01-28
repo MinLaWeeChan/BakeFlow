@@ -3,12 +3,14 @@ package controllers
 import (
 	"bakeflow/configs"
 	"bakeflow/models"
+	"log"
 	"strconv"
 	"strings"
 )
 
 // handlePostback processes button clicks (postback payloads)
 func handlePostback(userID, payload string) {
+	log.Printf("[Postback] User %s clicked: %s", userID, payload)
 	state := GetUserState(userID)
 
 	switch payload {
@@ -47,6 +49,23 @@ func handlePostback(userID, payload string) {
 
 	case "GET_STARTED":
 		showLanguageSelection(userID)
+
+	// Order Now / Order Again button
+	case "ORDER_NOW":
+		startOrderingFlow(userID)
+
+	// Track Order button - show recent order status (legacy, shows latest)
+	case "TRACK_ORDER":
+		showOrderTracking(userID, 0)
+
+	// Contact Support / Need Help button
+	case "CONTACT_SUPPORT":
+		showHelp(userID)
+
+	case "VERIFY_CUSTOMER_CONFIRM":
+		if confirmMessengerVerification(userID) {
+			return
+		}
 
 	// Product selection
 	case "ORDER_CHOCOLATE_CAKE":
@@ -264,7 +283,7 @@ func handlePostback(userID, payload string) {
 	case "SHOW_MENU":
 		showMenu(userID)
 
-	// Rating actions
+	// Rating actions (order-level)
 	case "RATING_1":
 		handleRating(userID, 1)
 	case "RATING_2":
@@ -277,6 +296,21 @@ func handlePostback(userID, payload string) {
 		handleRating(userID, 5)
 	case "SKIP_RATING":
 		SendMessage(userID, "No problem! Feel free to rate us anytime.\n\nType 'menu' to order again! 🍰")
+		ResetUserState(userID)
+
+	// Product rating actions
+	case "PRODUCT_RATING_1":
+		handleProductRating(userID, 1)
+	case "PRODUCT_RATING_2":
+		handleProductRating(userID, 2)
+	case "PRODUCT_RATING_3":
+		handleProductRating(userID, 3)
+	case "PRODUCT_RATING_4":
+		handleProductRating(userID, 4)
+	case "PRODUCT_RATING_5":
+		handleProductRating(userID, 5)
+	case "SKIP_PRODUCT_RATING":
+		SendMessage(userID, "No problem! Feel free to rate products anytime.\n\nType 'menu' to see products! 🍰")
 		ResetUserState(userID)
 
 	default:
@@ -353,6 +387,37 @@ func handlePostback(userID, payload string) {
 			orderIDStr := strings.TrimPrefix(payload, "RATE_ORDER_")
 			if orderID, err := strconv.Atoi(orderIDStr); err == nil {
 				askForRating(userID, orderID)
+				return
+			}
+		}
+
+		// Rate a specific product (RATE_PRODUCT_123)
+		if strings.HasPrefix(payload, "RATE_PRODUCT_") {
+			productIDStr := strings.TrimPrefix(payload, "RATE_PRODUCT_")
+			if productID, err := strconv.Atoi(productIDStr); err == nil {
+				showProductRatingOptions(userID, productID)
+				return
+			}
+		}
+
+		// Rate product from order (RATE_PRODUCT_ORDER_123_456 = productID_orderID)
+		if strings.HasPrefix(payload, "RATE_PRODUCT_ORDER_") {
+			parts := strings.Split(strings.TrimPrefix(payload, "RATE_PRODUCT_ORDER_"), "_")
+			if len(parts) == 2 {
+				if productID, err1 := strconv.Atoi(parts[0]); err1 == nil {
+					if orderID, err2 := strconv.Atoi(parts[1]); err2 == nil {
+						askForProductRating(userID, productID, orderID)
+						return
+					}
+				}
+			}
+		}
+
+		// Track specific order by ID (TRACK_ORDER_123)
+		if strings.HasPrefix(payload, "TRACK_ORDER_") {
+			orderIDStr := strings.TrimPrefix(payload, "TRACK_ORDER_")
+			if orderID, err := strconv.Atoi(orderIDStr); err == nil {
+				showOrderTracking(userID, orderID)
 				return
 			}
 		}

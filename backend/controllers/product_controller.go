@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"bakeflow/models"
 
@@ -28,12 +29,16 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 	offsetStr := r.URL.Query().Get("offset")
 	sortBy := r.URL.Query().Get("sort_by")
 	sortDir := r.URL.Query().Get("sort_dir")
+	includeStockParam := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("include_stock")))
+	includeStock := includeStockParam == "1" || includeStockParam == "true"
 
 	// Build query
 	query := `
-		SELECT p.id, p.name, p.description, p.category, p.price, p.stock, 
+		SELECT p.id, p.name, p.description, p.category, p.price, p.stock,
+		       COALESCE(p.reserved_stock, 0) as reserved_stock,
 		       p.image_url, p.status, p.created_at, p.updated_at,
-		       COALESCE(pa.views, 0) as views, COALESCE(pa.purchases, 0) as purchases
+		       COALESCE(pa.views, 0) as views, COALESCE(pa.purchases, 0) as purchases,
+		       COALESCE(p.avg_rating, 0) as avg_rating, COALESCE(p.rating_count, 0) as rating_count
 		FROM products p
 		LEFT JOIN product_analytics pa ON p.id = pa.product_id
 		WHERE p.deleted_at IS NULL
@@ -74,7 +79,7 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 
 	// Sorting
 	validSortFields := map[string]bool{
-		"name": true, "price": true, "stock": true, 
+		"name": true, "price": true, "stock": true,
 		"created_at": true, "views": true, "purchases": true,
 	}
 	if sortBy == "" {
@@ -115,11 +120,15 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 	products := []map[string]interface{}{}
 	for rows.Next() {
 		var p models.Product
+		var reservedStock int
 		var views, purchases int
+		var avgRating float64
+		var ratingCount int
 		var desc sql.NullString
 		var img sql.NullString
 		err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &p.Price,
-			&p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt, &views, &purchases)
+			&p.Stock, &reservedStock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt, &views, &purchases,
+			&avgRating, &ratingCount)
 		if err != nil {
 			continue
 		}
@@ -129,22 +138,39 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 		if img.Valid {
 			p.ImageURL = img.String
 		}
-		products = append(products, map[string]interface{}{
-			"id":          p.ID,
-			"name":        p.Name,
-			"description": p.Description,
-			"category":    p.Category,
-			"price":       p.Price,
-			"stock":       p.Stock,
-			"image_url":   p.ImageURL,
-			"status":      p.Status,
-			"created_at":  p.CreatedAt,
-			"updated_at":  p.UpdatedAt,
-			"views":       views,
-			"purchases":   purchases,
-			"low_stock":   p.IsLowStock(),
-			"out_of_stock": p.IsOutOfStock(),
-		})
+
+		// Compute availability status (don't expose exact stock numbers to customers)
+		availableStock := p.Stock - reservedStock
+		if availableStock < 0 {
+			availableStock = 0
+		}
+		availabilityStatus := "available"
+		if availableStock <= 0 {
+			availabilityStatus = "sold_out"
+		} else if availableStock <= 5 {
+			availabilityStatus = "limited"
+		}
+
+		productPayload := map[string]interface{}{
+			"id":                  p.ID,
+			"name":                p.Name,
+			"description":         p.Description,
+			"category":            p.Category,
+			"price":               p.Price,
+			"image_url":           p.ImageURL,
+			"status":              p.Status,
+			"created_at":          p.CreatedAt,
+			"updated_at":          p.UpdatedAt,
+			"views":               views,
+			"purchases":           purchases,
+			"availability_status": availabilityStatus,
+			"avg_rating":          avgRating,
+			"rating_count":        ratingCount,
+		}
+		if includeStock {
+			productPayload["stock"] = p.Stock
+		}
+		products = append(products, productPayload)
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
@@ -163,7 +189,8 @@ func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) 
 	}
 
 	query := `
-		SELECT p.id, p.name, p.description, p.category, p.price, p.stock, 
+		SELECT p.id, p.name, p.description, p.category, p.price, p.stock,
+		       COALESCE(p.reserved_stock, 0) as reserved_stock,
 		       p.image_url, p.status, p.created_at, p.updated_at,
 		       COALESCE(pa.views, 0) as views, COALESCE(pa.purchases, 0) as purchases
 		FROM products p
@@ -172,12 +199,13 @@ func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) 
 	`
 
 	var p models.Product
+	var reservedStock int
 	var views, purchases int
 	var desc sql.NullString
 	var img sql.NullString
 	err = pc.DB.QueryRow(query, id).Scan(
 		&p.ID, &p.Name, &desc, &p.Category, &p.Price,
-		&p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt,
+		&p.Stock, &reservedStock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		&views, &purchases,
 	)
 	if err == sql.ErrNoRows {
@@ -195,25 +223,32 @@ func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) 
 		p.ImageURL = img.String
 	}
 
+	availableStock := p.Stock - reservedStock
+	if availableStock < 0 {
+		availableStock = 0
+	}
+	isOutOfStock := availableStock <= 0
+	isLowStock := availableStock > 0 && availableStock <= 5
+
 	// Increment view count
 	go models.IncrementViews(pc.DB, id)
 
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"product": map[string]interface{}{
-			"id":          p.ID,
-			"name":        p.Name,
-			"description": p.Description,
-			"category":    p.Category,
-			"price":       p.Price,
-			"stock":       p.Stock,
-			"image_url":   p.ImageURL,
-			"status":      p.Status,
-			"created_at":  p.CreatedAt,
-			"updated_at":  p.UpdatedAt,
-			"views":       views,
-			"purchases":   purchases,
-			"low_stock":   p.IsLowStock(),
-			"out_of_stock": p.IsOutOfStock(),
+			"id":           p.ID,
+			"name":         p.Name,
+			"description":  p.Description,
+			"category":     p.Category,
+			"price":        p.Price,
+			"stock":        p.Stock,
+			"image_url":    p.ImageURL,
+			"status":       p.Status,
+			"created_at":   p.CreatedAt,
+			"updated_at":   p.UpdatedAt,
+			"views":        views,
+			"purchases":    purchases,
+			"low_stock":    isLowStock,
+			"out_of_stock": isOutOfStock,
 		},
 	})
 }
@@ -245,7 +280,7 @@ func (pc *ProductController) CreateProduct(w http.ResponseWriter, r *http.Reques
 	`
 	err := pc.DB.QueryRow(
 		query,
-		product.Name, product.Description, product.Category, 
+		product.Name, product.Description, product.Category,
 		product.Price, product.Stock, product.ImageURL, product.Status,
 	).Scan(&product.ID, &product.CreatedAt, &product.UpdatedAt)
 
@@ -257,7 +292,7 @@ func (pc *ProductController) CreateProduct(w http.ResponseWriter, r *http.Reques
 	// Log the creation
 	adminID := getAdminIDFromContext(r) // You'll need to implement this based on your auth
 	changes := map[string]interface{}{
-		"action": "created",
+		"action":  "created",
 		"product": product,
 	}
 	go models.CreateLogEntry(pc.DB, product.ID, adminID, "CREATE", changes)
@@ -351,8 +386,8 @@ func (pc *ProductController) UpdateProduct(w http.ResponseWriter, r *http.Reques
 	adminID := getAdminIDFromContext(r)
 	changes := map[string]interface{}{
 		"action": "updated",
-		"old": oldProduct,
-		"new": product,
+		"old":    oldProduct,
+		"new":    product,
 	}
 	go models.CreateLogEntry(pc.DB, product.ID, adminID, "UPDATE", changes)
 
@@ -412,7 +447,7 @@ func (pc *ProductController) UpdateProductStatus(w http.ResponseWriter, r *http.
 	// Log the change
 	adminID := getAdminIDFromContext(r)
 	changes := map[string]interface{}{
-		"action": "status_changed",
+		"action":     "status_changed",
 		"old_status": oldStatus,
 		"new_status": body.Status,
 	}
@@ -421,6 +456,82 @@ func (pc *ProductController) UpdateProductStatus(w http.ResponseWriter, r *http.
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("Product status updated to %s", body.Status),
+	})
+}
+
+// UpdateProductStock handles PATCH /api/products/:id/stock - quick stock adjustment
+func (pc *ProductController) UpdateProductStock(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid product ID", err)
+		return
+	}
+
+	var body struct {
+		Stock      *int   `json:"stock"`      // Absolute value
+		Adjustment *int   `json:"adjustment"` // Relative +/- value
+		Reason     string `json:"reason"`     // Optional reason for the change
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request payload", err)
+		return
+	}
+
+	// Get current stock
+	var oldStock int
+	var productName string
+	err = pc.DB.QueryRow("SELECT stock, name FROM products WHERE id = $1 AND deleted_at IS NULL", id).Scan(&oldStock, &productName)
+	if err == sql.ErrNoRows {
+		respondWithError(w, http.StatusNotFound, "Product not found", nil)
+		return
+	}
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to fetch product", err)
+		return
+	}
+
+	// Calculate new stock
+	var newStock int
+	if body.Stock != nil {
+		// Absolute value provided
+		newStock = *body.Stock
+	} else if body.Adjustment != nil {
+		// Relative adjustment
+		newStock = oldStock + *body.Adjustment
+	} else {
+		respondWithError(w, http.StatusBadRequest, "Either stock or adjustment is required", nil)
+		return
+	}
+
+	// Ensure stock doesn't go negative
+	if newStock < 0 {
+		newStock = 0
+	}
+
+	// Update stock
+	_, err = pc.DB.Exec("UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2", newStock, id)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to update stock", err)
+		return
+	}
+
+	// Log the change
+	adminID := getAdminIDFromContext(r)
+	changes := map[string]interface{}{
+		"action":    "stock_updated",
+		"old_stock": oldStock,
+		"new_stock": newStock,
+		"reason":    body.Reason,
+	}
+	go models.CreateLogEntry(pc.DB, id, adminID, "STOCK_UPDATE", changes)
+
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"success":   true,
+		"message":   fmt.Sprintf("Stock updated: %d → %d", oldStock, newStock),
+		"old_stock": oldStock,
+		"new_stock": newStock,
+		"product":   productName,
 	})
 }
 
@@ -452,7 +563,7 @@ func (pc *ProductController) DeleteProduct(w http.ResponseWriter, r *http.Reques
 	// Log the deletion
 	adminID := getAdminIDFromContext(r)
 	changes := map[string]interface{}{
-		"action": "deleted",
+		"action":     "deleted",
 		"product_id": id,
 	}
 	go models.CreateLogEntry(pc.DB, id, adminID, "DELETE", changes)
@@ -493,7 +604,7 @@ func (pc *ProductController) GetProductLogs(w http.ResponseWriter, r *http.Reque
 	for rows.Next() {
 		var log models.ProductLog
 		var username sql.NullString
-		err := rows.Scan(&log.ID, &log.ProductID, &log.AdminID, &log.Action, 
+		err := rows.Scan(&log.ID, &log.ProductID, &log.AdminID, &log.Action,
 			&log.Changes, &log.CreatedAt, &username)
 		if err != nil {
 			continue
@@ -513,7 +624,7 @@ func (pc *ProductController) GetProductLogs(w http.ResponseWriter, r *http.Reque
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"logs": logs,
+		"logs":  logs,
 		"count": len(logs),
 	})
 }
@@ -558,8 +669,8 @@ func (pc *ProductController) GetLowStockProducts(w http.ResponseWriter, r *http.
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"products": products,
-		"count":    len(products),
+		"products":  products,
+		"count":     len(products),
 		"threshold": threshold,
 	})
 }
@@ -576,8 +687,8 @@ func (pc *ProductController) SeedProducts(w http.ResponseWriter, r *http.Request
 	}
 	if count > 0 {
 		respondWithJSON(w, http.StatusOK, map[string]interface{}{
-			"success": true,
-			"message": "Products already exist; seed skipped",
+			"success":        true,
+			"message":        "Products already exist; seed skipped",
 			"existing_count": count,
 		})
 		return
@@ -590,10 +701,10 @@ func (pc *ProductController) SeedProducts(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	samples := []struct{
+	samples := []struct {
 		name, desc, category, image, status string
-		price float64
-		stock int
+		price                               float64
+		stock                               int
 	}{
 		{"Chocolate Fudge Cake", "Rich chocolate cake with fudge frosting", "Cakes", "", "active", 29.99, 12},
 		{"Vanilla Cupcakes", "Classic vanilla cupcakes with buttercream", "Cupcakes", "", "active", 3.50, 60},
@@ -631,15 +742,18 @@ func (pc *ProductController) SeedProducts(w http.ResponseWriter, r *http.Request
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"message": "Sample products inserted",
+		"success":  true,
+		"message":  "Sample products inserted",
 		"inserted": inserted,
 	})
 }
 
 // DebugProducts handles GET /api/products/debug - returns counts and sample rows to help diagnose
 func (pc *ProductController) DebugProducts(w http.ResponseWriter, r *http.Request) {
-	type C struct{ Label string; Count int }
+	type C struct {
+		Label string
+		Count int
+	}
 	counts := []C{}
 
 	// Total products
@@ -678,22 +792,27 @@ func (pc *ProductController) DebugProducts(w http.ResponseWriter, r *http.Reques
 			var deletedAt sql.NullTime
 			if err := sampleRows.Scan(&id, &name, &category, &price, &stock, &status, &deletedAt); err == nil {
 				samples = append(samples, map[string]interface{}{
-					"id": id,
-					"name": name,
+					"id":       id,
+					"name":     name,
 					"category": category,
-					"price": price,
-					"stock": stock,
-					"status": status,
-					"deleted_at": func() interface{} { if deletedAt.Valid { return deletedAt.Time } ; return nil }(),
+					"price":    price,
+					"stock":    stock,
+					"status":   status,
+					"deleted_at": func() interface{} {
+						if deletedAt.Valid {
+							return deletedAt.Time
+						}
+						return nil
+					}(),
 				})
 			}
 		}
 	}
 
 	respondWithJSON(w, http.StatusOK, map[string]interface{}{
-		"counts": counts,
+		"counts":    counts,
 		"by_status": byStatus,
-		"samples": samples,
+		"samples":   samples,
 	})
 }
 

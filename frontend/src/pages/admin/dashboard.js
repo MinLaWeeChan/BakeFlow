@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Head from 'next/head';
 import Sidebar from '../../components/Sidebar';
 import TopNavbar from '../../components/TopNavbar';
@@ -37,13 +37,13 @@ export default function AdminDashboard() {
   }, []);
 
   // Save seen orders to localStorage whenever it changes
-  const updateSeenOrders = (orderIds) => {
+  const updateSeenOrders = useCallback((orderIds) => {
     orderIds.forEach(id => seenOrdersRef.current.add(id));
     const ids = Array.from(seenOrdersRef.current);
     localStorage.setItem('bakeflow_seen_orders', JSON.stringify(ids));
-  };
+  }, []);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       setError(null);
       const res = await fetch('http://localhost:8080/api/admin/orders');
@@ -96,13 +96,13 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [addNotifications, updateSeenOrders]);
 
   useEffect(() => {
     fetchOrders();
     const interval = setInterval(fetchOrders, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchOrders]);
 
   const stats = useMemo(() => {
     const pending = orders.filter(o => o.status === 'pending').length;
@@ -173,6 +173,7 @@ export default function AdminDashboard() {
           <div className="flex-grow-1 overflow-auto">
             {/* Preview card notification */}
             <NotificationPreviewCard
+              key={previewCard?.orders?.[0]?.id || previewCard?.id || 'preview-none'}
               notification={previewCard}
               onClose={() => setPreviewCard(null)}
               onView={(id) => {

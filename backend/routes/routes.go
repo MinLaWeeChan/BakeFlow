@@ -81,6 +81,11 @@ func SetupRoutes() http.Handler {
 		http.ServeFile(w, r, "../frontend/public/order-details.html")
 	}).Methods("GET")
 
+	// Serve rate order page
+	router.HandleFunc("/rate-order.html", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "../frontend/public/rate-order.html")
+	}).Methods("GET")
+
 	// Messenger webhook endpoint
 	// GET: Facebook verification
 	// POST: Receive messages from users
@@ -104,10 +109,17 @@ func SetupRoutes() http.Handler {
 	router.HandleFunc("/api/me/saved-orders", controllers.MeSavedOrders).Methods("GET", "POST", "OPTIONS")
 	router.HandleFunc("/api/me/saved-orders/{id:[0-9]+}", controllers.MeDeleteSavedOrder).Methods("DELETE", "OPTIONS")
 	router.HandleFunc("/api/me/recent-orders", controllers.MeRecentOrders).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/me/active-order", controllers.MeActiveOrder).Methods("GET", "OPTIONS")
 
 	// Admin API Routes - Orders
 	router.HandleFunc("/api/admin/orders", controllers.AdminGetOrders).Methods("GET")
+	router.HandleFunc("/api/admin/customers/block", controllers.AdminBlockMessengerUser).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/admin/customers/unblock", controllers.AdminUnblockMessengerUser).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/admin/customers/status", controllers.AdminGetCustomerStatus).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/customers/verify", controllers.AdminSetCustomerVerification).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/admin/customers/verify/messenger", controllers.AdminRequestMessengerVerification).Methods("POST", "OPTIONS")
 	router.HandleFunc("/api/admin/orders/{id}/status", controllers.AdminUpdateOrderStatus).Methods("PUT", "OPTIONS")
+	router.HandleFunc("/api/admin/orders/{id}/cancel", controllers.AdminCancelOrder).Methods("POST", "OPTIONS")
 
 	// Admin API Routes - Products
 	productController := &controllers.ProductController{DB: configs.DB}
@@ -130,16 +142,42 @@ func SetupRoutes() http.Handler {
 	// Product Status (numeric id)
 	router.HandleFunc("/api/products/{id:[0-9]+}/status", productController.UpdateProductStatus).Methods("PATCH", "OPTIONS")
 
+	// Product Stock (quick inline adjustment)
+	router.HandleFunc("/api/products/{id:[0-9]+}/stock", productController.UpdateProductStock).Methods("PATCH", "OPTIONS")
+
 	// Product Logs
 	router.HandleFunc("/api/products/{id}/logs", productController.GetProductLogs).Methods("GET", "OPTIONS")
 
 	// Product Alerts
 	router.HandleFunc("/api/products/low-stock", productController.GetLowStockProducts).Methods("GET", "OPTIONS")
 
+	// Product Ratings
+	router.HandleFunc("/api/products/{id:[0-9]+}/ratings", controllers.GetProductRatings).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/ratings", controllers.SubmitRating).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/ratings/bulk", controllers.SubmitBulkRatings).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/orders/{id:[0-9]+}/rating-status", controllers.GetOrderRatingStatus).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/ratings", controllers.AdminGetAllRatings).Methods("GET", "OPTIONS")
+
+	// Stock API - Real-time stock status for frontend
+	router.HandleFunc("/api/stock/{id:[0-9]+}", controllers.GetProductStockStatus).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/stock/bulk", controllers.GetBulkStockStatus).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/stock/validate-cart", controllers.ValidateCartStock).Methods("POST", "OPTIONS")
+
 	// (Moved above to avoid route conflicts)
 
 	// Uploads - Cloudinary
 	router.HandleFunc("/api/uploads/cloudinary", controllers.UploadProductImage).Methods("POST", "OPTIONS")
+
+	// Promotions API
+	router.HandleFunc("/promotions/active", controllers.GetActivePromotions).Methods("GET", "OPTIONS")
+	router.HandleFunc("/checkout", controllers.CalculateCheckout).Methods("POST", "OPTIONS")
+
+	// Admin Promotions API
+	router.HandleFunc("/api/admin/promotions", controllers.AdminGetAllPromotions).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/promotions", controllers.AdminCreatePromotion).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/admin/promotions/{id:[0-9]+}", controllers.AdminUpdatePromotion).Methods("PUT", "OPTIONS")
+	router.HandleFunc("/api/admin/promotions/{id:[0-9]+}/toggle", controllers.AdminTogglePromotion).Methods("PATCH", "OPTIONS")
+	router.HandleFunc("/api/admin/promotions/{id:[0-9]+}", controllers.AdminDeletePromotion).Methods("DELETE", "OPTIONS")
 
 	// Wrap with middleware
 	handler := LoggingMiddleware(router)

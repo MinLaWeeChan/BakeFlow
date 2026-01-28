@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import Image from 'next/image';
 import Sidebar from '../../components/Sidebar';
 import TopNavbar from '../../components/TopNavbar';
 import { useNotifications } from '../../contexts/NotificationContext';
@@ -15,10 +16,35 @@ export default function ProductsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [filter, setFilter] = useState({ category: '', status: '', search: '' });
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+  const [stockStatus, setStockStatus] = useState({});
   const { notifications, unreadCount, hasUnread, markAsRead, markAllRead, clearAll } = useNotifications();
   const { t } = useTranslation();
 
-  const fetchProducts = async () => {
+  const fetchStockStatus = useCallback(async (productIds) => {
+    if (!productIds.length) {
+      setStockStatus({});
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/stock/bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ product_ids: productIds })
+      });
+      if (!res.ok) throw new Error(`Stock API error ${res.status}`);
+      const data = await res.json();
+      const next = {};
+      (data.products || []).forEach(item => {
+        next[item.product_id] = item;
+      });
+      setStockStatus(next);
+    } catch (e) {
+      console.error(e);
+      setStockStatus({});
+    }
+  }, [API_BASE]);
+
+  const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -28,7 +54,9 @@ export default function ProductsPage() {
       const res = await fetch(`${API_BASE}/api/products?${params.toString()}`);
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
-      setProducts(data.products || []);
+      const nextProducts = data.products || [];
+      setProducts(nextProducts);
+      await fetchStockStatus(nextProducts.map(product => product.id));
       setError(null);
     } catch (e) {
       console.error(e);
@@ -36,9 +64,9 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE, fetchStockStatus, filter]);
 
-  useEffect(() => { fetchProducts(); }, [filter]);
+  useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
   const showNotification = (message, type) => {
     setNotification({ show: true, message, type });
@@ -72,6 +100,26 @@ export default function ProductsPage() {
     }
   };
 
+  const adjustStock = async (id, adjustment) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/products/${id}/stock`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adjustment })
+      });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        showNotification(`Stock: ${data.old_stock} → ${data.new_stock}`, 'success');
+        fetchProducts();
+      } else {
+        showNotification('Failed to update stock', 'danger');
+      }
+    } catch {
+      showNotification('Error updating stock', 'danger');
+    }
+  };
+
   const getStatusBadge = (status) => {
     const m = {
       draft: 'bg-warning-subtle text-warning border border-warning-subtle',
@@ -81,6 +129,15 @@ export default function ProductsPage() {
     };
     return m[status] || 'bg-secondary-subtle text-secondary border border-secondary-subtle';
   };
+
+  const lowStockCount = useMemo(() => {
+    return products.filter(product => {
+      const info = stockStatus[product.id];
+      if (info) return info.status !== 'in_stock';
+      if (product.out_of_stock || product.low_stock) return true;
+      return ['limited', 'sold_out'].includes(product.availability_status);
+    }).length;
+  }, [products, stockStatus]);
 
   return (
     <>
@@ -137,7 +194,7 @@ export default function ProductsPage() {
                 {[
                   { icon: 'bi-box', label: t('totalProducts'), value: products.length },
                   { icon: 'bi-check-circle', label: t('activeProducts'), value: products.filter(p => p.status === 'active').length },
-                  { icon: 'bi-exclamation-triangle', label: t('lowStockItems'), value: products.filter(p => p.low_stock || p.out_of_stock).length },
+                  { icon: 'bi-exclamation-triangle', label: t('lowStockItems'), value: lowStockCount },
                   { icon: 'bi-eye', label: t('totalViews'), value: products.reduce((s, p) => s + (p.views || 0), 0) }
                 ].map((c, idx) => (
                   <div className="col-lg-3 col-md-6" key={idx}>
@@ -243,13 +300,20 @@ export default function ProductsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {products.map((product) => (
+                          {products.map((product) => {
+                            const info = stockStatus[product.id];
+                            const availableStock = info?.available_stock ?? product.stock ?? 0;
+                            const totalStock = info?.total_stock ?? product.stock ?? availableStock;
+                            const reservedStock = info?.reserved_stock ?? Math.max(totalStock - availableStock, 0);
+                            const isOutOfStock = info?.status === 'out_of_stock' || product.out_of_stock || product.availability_status === 'sold_out';
+                            const isLowStock = info?.status === 'low_stock' || product.low_stock || product.availability_status === 'limited';
+                            return (
                             <tr key={product.id}>
                               <td>
                                 <div className="d-flex align-items-center gap-3">
                                   <div className="rounded-3 overflow-hidden bg-light" style={{ width: 64, height: 64 }}>
                                     {product.image_url ? (
-                                      <img src={product.image_url} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                      <Image src={product.image_url} alt={product.name} width={64} height={64} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                                     ) : (
                                       <div className="d-flex align-items-center justify-content-center h-100">
                                         <i className="bi bi-image text-muted"></i>
@@ -270,16 +334,40 @@ export default function ProductsPage() {
                               <td className="fw-semibold">{formatCurrency(product.price)}</td>
                               <td>
                                 <div className="d-flex flex-column">
-                                  <span className="fw-semibold">{product.stock}</span>
+                                  <div className="d-flex align-items-center gap-2">
+                                    <button 
+                                      className="btn btn-outline-secondary btn-sm rounded-circle p-0" 
+                                      style={{ width: 24, height: 24, fontSize: 14 }}
+                                      onClick={() => adjustStock(product.id, -1)}
+                                      title="Decrease stock"
+                                    >
+                                      <i className="bi bi-dash"></i>
+                                    </button>
+                                    <span className="fw-semibold" style={{ minWidth: 30, textAlign: 'center' }}>{availableStock}</span>
+                                    <button 
+                                      className="btn btn-outline-secondary btn-sm rounded-circle p-0" 
+                                      style={{ width: 24, height: 24, fontSize: 14 }}
+                                      onClick={() => adjustStock(product.id, 1)}
+                                      title="Increase stock"
+                                    >
+                                      <i className="bi bi-plus"></i>
+                                    </button>
+                                  </div>
                                   <span className="mt-2">
-                                    {product.out_of_stock ? (
+                                    {isOutOfStock ? (
                                       <span className="badge rounded-pill bg-danger-subtle text-danger border border-danger-subtle d-inline-flex align-items-center gap-2"><span className="rounded-circle bg-danger" style={{ width: 8, height: 8, opacity: .2 }}></span> {t('outOfStock')}</span>
-                                    ) : product.low_stock ? (
+                                    ) : isLowStock ? (
                                       <span className="badge rounded-pill bg-warning-subtle text-warning border border-warning-subtle d-inline-flex align-items-center gap-2"><span className="rounded-circle bg-warning" style={{ width: 8, height: 8, opacity: .2 }}></span> {t('lowStock')}</span>
                                     ) : (
                                       <span className="badge rounded-pill bg-success-subtle text-success border border-success-subtle d-inline-flex align-items-center gap-2"><span className="rounded-circle bg-success" style={{ width: 8, height: 8, opacity: .2 }}></span> {t('goodStock')}</span>
                                     )}
                                   </span>
+                                  <span className="text-muted small">
+                                    Available {availableStock} / {totalStock}{reservedStock > 0 ? ` • ${reservedStock} reserved` : ''}
+                                  </span>
+                                  {isLowStock && availableStock > 0 ? (
+                                    <span className="text-muted small">Only {availableStock} left</span>
+                                  ) : null}
                                 </div>
                               </td>
                               <td>
@@ -334,7 +422,8 @@ export default function ProductsPage() {
                                 </div>
                               </td>
                             </tr>
-                          ))}
+                          );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -348,4 +437,3 @@ export default function ProductsPage() {
     </>
   );
 }
-

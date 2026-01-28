@@ -267,9 +267,9 @@ async function renderSavedOrders() {
 }
 
 window.applySavedOrder = function(idx) {
+    const userId = getUserId();
+    const key = `saved_orders_${userId}`;
     const list = getSavedOrdersCache() || (() => {
-        const userId = getUserId();
-        const key = `saved_orders_${userId}`;
         return JSON.parse(localStorage.getItem(key) || '[]');
     })();
 
@@ -277,7 +277,18 @@ window.applySavedOrder = function(idx) {
     if (!o) return;
     
     const newCart = {};
-    o.items.forEach(it => { newCart[it.id] = it.qty; });
+    const unavailableItems = [];
+    const products = window.products || [];
+    
+    o.items.forEach(it => {
+        const p = products.find(px => px.id == it.id);
+        if (p) {
+            newCart[it.id] = it.qty;
+        } else {
+            unavailableItems.push(it.name || `Item #${it.id}`);
+        }
+    });
+    
     window.setCart(newCart);
     window.updateCart();
     
@@ -286,7 +297,13 @@ window.applySavedOrder = function(idx) {
     o.timestamp = Date.now();
     localStorage.setItem(key, JSON.stringify(list));
     
-    showToast('✓ Order loaded', 'success');
+    if (unavailableItems.length > 0) {
+        const itemNames = unavailableItems.slice(0, 3).join(', ');
+        const more = unavailableItems.length > 3 ? ` and ${unavailableItems.length - 3} more` : '';
+        showToast(`Some items unavailable: ${itemNames}${more}`, 'warning');
+    } else {
+        showToast('✓ Order loaded', 'success');
+    }
 };
 
 window.applyRecentOrder = function(idx) {
@@ -300,14 +317,31 @@ window.applyRecentOrder = function(idx) {
     if (!o || !Array.isArray(o.items)) return;
 
     const newCart = {};
+    const unavailableItems = [];
+    const products = window.products || [];
+    
     o.items.forEach(it => {
         const id = it.id || it.product_id;
-        if (id != null) newCart[id] = it.qty || 1;
+        if (id != null) {
+            const p = products.find(px => px.id == id);
+            if (p) {
+                newCart[id] = it.qty || 1;
+            } else {
+                unavailableItems.push(it.name || `Item #${id}`);
+            }
+        }
     });
 
     window.setCart(newCart);
     window.updateCart();
-    showToast('✓ Order loaded', 'success');
+    
+    if (unavailableItems.length > 0) {
+        const itemNames = unavailableItems.slice(0, 3).join(', ');
+        const more = unavailableItems.length > 3 ? ` and ${unavailableItems.length - 3} more` : '';
+        showToast(`Some items unavailable: ${itemNames}${more}`, 'warning');
+    } else {
+        showToast('✓ Order loaded', 'success');
+    }
 };
 
 function initSaveSheet() {

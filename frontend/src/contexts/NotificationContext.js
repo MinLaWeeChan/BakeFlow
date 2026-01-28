@@ -4,39 +4,27 @@ const NotificationContext = createContext();
 
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
+  const [storageReady, setStorageReady] = useState(false);
   const [newOrderToast, setNewOrderToast] = useState({ show: false, items: [] });
-  const [hasUnread, setHasUnread] = useState(false);
 
-  // Load notifications from localStorage on mount
   useEffect(() => {
-    const stored = localStorage.getItem('bakeflow_notifications');
-    if (stored) {
+    try {
+      const stored = localStorage.getItem('bakeflow_notifications');
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) setNotifications(parsed);
+    } catch (e) {
       try {
-        const parsed = JSON.parse(stored);
-        // Filter out notifications older than 24 hours
-        const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
-        const recent = parsed.filter(n => {
-          const isRecent = (n.timestamp || 0) > oneDayAgo;
-          // Also filter out notifications that have been read for more than 1 hour
-          const isRead = n.read || n.isRead;
-          if (isRead && n.readAt) {
-            const oneHourAgo = Date.now() - (60 * 60 * 1000);
-            return (n.readAt || 0) > oneHourAgo;
-          }
-          return isRecent;
-        });
-        console.log('📥 Loaded', recent.length, 'notifications from localStorage');
-        setNotifications(recent);
-        setHasUnread(recent.some(n => !n.read && !n.isRead));
-      } catch (e) {
-        console.error('Failed to parse stored notifications:', e);
         localStorage.removeItem('bakeflow_notifications');
-      }
+      } catch (_) {}
+    } finally {
+      setStorageReady(true);
     }
   }, []);
 
   // Persist to localStorage whenever notifications change
   useEffect(() => {
+    if (!storageReady) return;
     if (notifications.length === 0) {
       console.log('💾 Clearing localStorage (no notifications)');
       localStorage.removeItem('bakeflow_notifications');
@@ -44,8 +32,7 @@ export function NotificationProvider({ children }) {
       console.log('💾 Saving', notifications.length, 'notifications to localStorage');
       localStorage.setItem('bakeflow_notifications', JSON.stringify(notifications));
     }
-    setHasUnread(notifications.some(n => !n.read && !n.isRead));
-  }, [notifications]);
+  }, [notifications, storageReady]);
 
   const addNotifications = useCallback((newOnes) => {
     if (!newOnes || newOnes.length === 0) return;
@@ -78,7 +65,9 @@ export function NotificationProvider({ children }) {
 
   const clearAll = useCallback(() => {
     setNotifications([]);
-    localStorage.removeItem('bakeflow_notifications');
+    try {
+      localStorage.removeItem('bakeflow_notifications');
+    } catch (_) {}
   }, []);
 
   const dismissToast = useCallback(() => {
@@ -94,6 +83,7 @@ export function NotificationProvider({ children }) {
   }, [newOrderToast.show, dismissToast]);
 
   const unreadCount = notifications.filter(n => !n.read && !n.isRead).length;
+  const hasUnread = unreadCount > 0;
 
   return (
     <NotificationContext.Provider value={{

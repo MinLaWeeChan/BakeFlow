@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -41,6 +42,11 @@ func main() {
 	controllers.SetupGetStartedButton()
 	controllers.SetupGreetingText()
 	log.Println("✅ Facebook Messenger setup complete")
+
+	// Start background stock cleanup job (releases expired reservations)
+	log.Println("⚙️  Starting stock reservation cleanup job...")
+	controllers.StartStockCleanupJob(1 * time.Minute)
+	log.Println("✅ Stock cleanup job started (runs every minute)")
 
 	// Setup HTTP routes with middleware
 	router := routes.SetupRoutes()

@@ -38,14 +38,23 @@
     border-radius: var(--radius);
     padding: var(--space-sm) var(--space-md);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    border: 1px solid var(--gray-100);
+    border: none;
+    transition: all var(--transition-fast);
+}
+
+.bar-summary:hover {
+    background: var(--gray-50);
+}
+
+.bar-summary:active {
+    transform: none;
 }
 
 .bar-summary-left {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-sm);
 }
 
@@ -66,7 +75,7 @@
 }
 
 .bar-items {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--gray-600);
 }
 
@@ -76,30 +85,69 @@
 }
 
 .bar-total {
-    font-size: 20px;
+    font-size: 22px;
     font-weight: 800;
     color: var(--gray-900);
     letter-spacing: -0.02em;
 }
 
+.bar-summary-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.bar-subtotal-row,
+.bar-discount-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-500);
+}
+
+.bar-discount-row {
+    color: var(--success);
+}
+
+.bar-label {
+    font-weight: 600;
+    color: inherit;
+}
+
+.bar-total-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.bar-total-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-500);
+}
+
 /* ========== Primary Button ========== */
 .primary-btn {
-    height: 52px;
+    height: 56px;
     padding: 0 24px;
     border-radius: var(--radius);
     border: none;
     background: var(--primary);
     color: #fff;
-    font-weight: 700;
-    font-size: 15px;
+    font-weight: 800;
+    font-size: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 0;
     cursor: pointer;
     transition: all var(--transition-fast);
     flex-shrink: 0;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow);
 }
 
 .primary-btn:hover:not(:disabled) {
@@ -167,6 +215,16 @@
 @media (min-width: 380px) {
     .secondary-btn span {
         display: inline;
+    }
+}
+
+@media (max-width: 520px) {
+    .bar-main {
+        flex-direction: column;
+    }
+
+    .primary-btn {
+        width: 100%;
     }
 }
 

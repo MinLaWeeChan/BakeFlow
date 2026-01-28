@@ -1,36 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '../utils/i18n';
 
 export default function NotificationPreviewCard({ notification, onClose, onView }) {
   const [hiding, setHiding] = useState(false);
+  const { t } = useTranslation();
+
+  const handleClose = useCallback(() => {
+    setHiding(true);
+    setTimeout(() => {
+      if (onClose) onClose();
+    }, 300);
+  }, [onClose]);
 
   useEffect(() => {
     if (!notification) return;
-    
-    // Reset hiding state when new notification comes in
-    setHiding(false);
-    
-    console.log('NotificationPreviewCard received:', notification);
-    
+
     // Auto-hide after 6 seconds
     const timer = setTimeout(() => {
       handleClose();
     }, 6000);
 
     return () => clearTimeout(timer);
-  }, [notification]);
-
-  const handleClose = () => {
-    setHiding(true);
-    setTimeout(onClose, 300);
-  };
+  }, [notification, handleClose]);
 
   if (!notification) return null;
 
   const orders = notification.orders || [notification];
   const count = notification.count || orders.length;
   const firstOrder = orders[0];
-  const { t } = useTranslation();
 
   return (
     <div className={`bf-preview-card ${hiding ? 'hiding' : ''}`}>

@@ -20,6 +20,7 @@ const STRINGS = {
     // nav keys
     orders: 'Orders',
     products: 'Products',
+    promotions: 'Promotions',
     customers: 'Customers',
     analytics: 'Analytics',
     settings: 'Settings',
@@ -117,6 +118,7 @@ const STRINGS = {
     // nav keys
     orders: 'အော်ဒါများ',
     products: 'ထုတ်ကုန်များ',
+    promotions: 'လျှော့စျေးများ',
     customers: 'ဖောက်သည်များ',
     analytics: 'သုံးသပ်ချက်',
     settings: 'ဆက်တင်များ',

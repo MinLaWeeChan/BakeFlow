@@ -57,13 +57,25 @@ async function init() {
         try {
             const items = JSON.parse(pendingCart);
             cart = {};
+            const unavailableItems = [];
             items.forEach(it => {
                 const p = products.find(px => px.id == it.id);
-                if (p) cart[it.id] = it.qty;
+                if (p) {
+                    cart[it.id] = it.qty;
+                } else {
+                    unavailableItems.push(it.name || `Item #${it.id}`);
+                }
             });
             updateCart();
             localStorage.removeItem(pendingCartKey);
-            showToast('✓ Order loaded');
+            
+            if (unavailableItems.length > 0) {
+                const itemNames = unavailableItems.slice(0, 3).join(', ');
+                const more = unavailableItems.length > 3 ? ` and ${unavailableItems.length - 3} more` : '';
+                showToast(`Some items unavailable: ${itemNames}${more}`);
+            } else {
+                showToast('✓ Order loaded');
+            }
         } catch(e) { console.log('Failed to load pending cart', e); }
     }
     
@@ -73,13 +85,25 @@ async function init() {
         const list = JSON.parse(localStorage.getItem(key) || '[]');
         if (list.length > 0) {
             cart = {};
+            const unavailableItems = [];
             (list[0].items || []).forEach(it => {
                 const p = products.find(px => (px.name || '').toLowerCase() === (it.name || '').toLowerCase());
                 const id = p ? p.id : null;
-                if (id) cart[id] = it.qty;
+                if (id) {
+                    cart[id] = it.qty;
+                } else {
+                    unavailableItems.push(it.name || 'Unknown item');
+                }
             });
             updateCart();
-            showToast('✓ Order loaded');
+            
+            if (unavailableItems.length > 0) {
+                const itemNames = unavailableItems.slice(0, 3).join(', ');
+                const more = unavailableItems.length > 3 ? ` and ${unavailableItems.length - 3} more` : '';
+                showToast(`Some items unavailable: ${itemNames}${more}`);
+            } else {
+                showToast('✓ Order loaded');
+            }
         }
     }
     
@@ -172,8 +196,18 @@ function decreaseQty(productId) {
     }
 }
 
-function updateCart() {
-    let total = 0;
+function clearCart() {
+    console.log('clearCart called, cart:', cart);
+    if (Object.keys(cart).length === 0) {
+        showToast('Cart is already empty');
+        return;
+    }
+    cart = {};
+    updateCart();
+    showToast('Cart cleared', 'success');
+}
+
+async function updateCart() {
     let itemCount = 0;
 
     products.forEach(p => {
@@ -184,26 +218,69 @@ function updateCart() {
         if (decEl) decEl.disabled = qty === 0;
     });
 
-    Object.keys(cart).forEach(id => {
+    // Build cart items for checkout calculation
+    const cartItems = Object.keys(cart).map(id => {
         const product = products.find(p => p.id == id);
         const qty = cart[id];
-        total += (product.price * qty);
         itemCount += qty;
+        return {
+            productId: parseInt(id),
+            qty: qty,
+            unitPrice: product.price
+        };
     });
 
     const barItemsEl = document.getElementById('barItems');
+    const barSubtotalEl = document.getElementById('barSubtotal');
+    const barDiscountEl = document.getElementById('barDiscount');
+    const barDiscountRowEl = document.getElementById('barDiscountRow');
     const barTotalEl = document.getElementById('barTotal');
-    const barTotalBigEl = document.getElementById('barTotalBig');
     const barCheckoutEl = document.getElementById('barCheckout');
     
     if (barItemsEl) barItemsEl.textContent = itemCount;
-    if (barTotalEl) barTotalEl.textContent = `$${total.toFixed(2)}`;
-    if (barTotalBigEl) barTotalBigEl.textContent = `$${total.toFixed(2)}`;
     if (barCheckoutEl) barCheckoutEl.disabled = itemCount === 0;
+
+    // Calculate total with promotions via backend
+    if (itemCount > 0 && typeof calculateCheckoutWithPromotions === 'function') {
+        try {
+            const checkout = await calculateCheckoutWithPromotions(cartItems);
+            const displayTotal = checkout.total.toFixed(2);
+            const subtotal = Number(checkout.subtotal || checkout.total || 0);
+            const discount = Number(checkout.discount || 0);
+            const hasPromo = ((Array.isArray(checkout.appliedPromotions) && checkout.appliedPromotions.length > 0) || checkout.appliedPromotion) && discount > 0;
+            
+            if (barSubtotalEl) barSubtotalEl.textContent = `$${subtotal.toFixed(2)}`;
+            if (barDiscountEl) barDiscountEl.textContent = `-$${discount.toFixed(2)}`;
+            if (barDiscountRowEl) barDiscountRowEl.style.display = hasPromo ? 'flex' : 'none';
+            if (barTotalEl) barTotalEl.textContent = `$${displayTotal}`;
+            if (barCheckoutEl) barCheckoutEl.textContent = `Checkout • $${displayTotal}`;
+
+            // Store checkout data for order submission
+            window.currentCheckout = checkout;
+        } catch (e) {
+            console.error('Failed to calculate checkout:', e);
+            // Fallback to simple calculation
+            const total = cartItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
+            if (barSubtotalEl) barSubtotalEl.textContent = `$${total.toFixed(2)}`;
+            if (barDiscountEl) barDiscountEl.textContent = `-$${(0).toFixed(2)}`;
+            if (barDiscountRowEl) barDiscountRowEl.style.display = 'none';
+            if (barTotalEl) barTotalEl.textContent = `$${total.toFixed(2)}`;
+            if (barCheckoutEl) barCheckoutEl.textContent = `Checkout • $${total.toFixed(2)}`;
+        }
+    } else {
+        // Fallback if promotions.js not loaded
+        const total = cartItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
+        if (barSubtotalEl) barSubtotalEl.textContent = `$${total.toFixed(2)}`;
+        if (barDiscountEl) barDiscountEl.textContent = `-$${(0).toFixed(2)}`;
+        if (barDiscountRowEl) barDiscountRowEl.style.display = 'none';
+        if (barTotalEl) barTotalEl.textContent = `$${total.toFixed(2)}`;
+        if (barCheckoutEl) barCheckoutEl.textContent = `Checkout • $${total.toFixed(2)}`;
+    }
 
     if (pendingSchedule && barTotalEl) {
         const when = `${pendingSchedule.date} ${pendingSchedule.time}`;
-        barTotalEl.innerHTML = `$${total.toFixed(2)} · <span style="color:var(--primary);font-size:11px;">📅 ${when}</span>`;
+        const total = (window.currentCheckout?.total || cartItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0));
+        barTotalEl.textContent = `$${Number(total).toFixed(2)}`;
     }
     
     adjustSafePadding();
@@ -355,7 +432,20 @@ function adjustSafePadding() {
 
 function appendNote(text) {
     const el = document.getElementById('orderNotes');
-    el.value = el.value ? (el.value + ' · ' + text) : text;
+    if (!el) return;
+    const quickNotes = ['Leave at door', 'Call on arrival'];
+    const current = (el.value || '')
+        .split(/\s*·\s*/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    const withoutQuick = current.filter(s => !quickNotes.includes(s));
+    const next = new Set(withoutQuick);
+    if (quickNotes.includes(text)) {
+        next.add(text);
+    } else if (text) {
+        next.add(text);
+    }
+    el.value = Array.from(next).join(' · ');
 }
 
 function showError(msg) {
@@ -431,6 +521,14 @@ function submitOrder() {
         delivery_directions: document.getElementById('deliveryDirections')?.value.trim() || ''
     };
 
+    // Include promotion data if one was applied
+    if (window.currentCheckout) {
+        orderData.discount = window.currentCheckout.discount || 0;
+        orderData.appliedPromotion = window.currentCheckout.appliedPromotion || null;
+        orderData.appliedPromotions = Array.isArray(window.currentCheckout.appliedPromotions) ? window.currentCheckout.appliedPromotions : [];
+        console.log('💰 Applying promotion:', window.currentCheckout.appliedPromotion, 'Discount:', window.currentCheckout.discount);
+    }
+
     console.log('📦 Sending order:', orderData);
 
     fetch('http://localhost:8080/api/chat/orders', {
@@ -474,6 +572,7 @@ function submitOrder() {
 // Expose functions globally
 window.increaseQty = increaseQty;
 window.decreaseQty = decreaseQty;
+window.clearCart = clearCart;
 window.selectDeliveryType = selectDeliveryType;
 window.useMyLocation = useMyLocation;
 window.findOnMap = findOnMap;

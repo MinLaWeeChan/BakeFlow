@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rate Your Order - BakeFlow</title>
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/base.css">
+    <style>
+        body {
+            background: var(--gray-50);
+            padding: 0;
+            margin: 0;
+            color: var(--gray-900);
+        }
+
+        .rate-container {
+            max-width: 720px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background: var(--warm-white);
+            border-left: 1px solid var(--gray-100);
+            border-right: 1px solid var(--gray-100);
+        }
+
+        .rate-header {
+            padding: var(--space-xl) var(--space-lg) var(--space-md);
+            border-bottom: 1px solid var(--gray-100);
+            background: #fff;
+        }
+
+        .rate-header h1 {
+            font-size: 22px;
+            margin: 0 0 6px 0;
+            color: var(--gray-900);
+        }
+
+        .rate-header p {
+            margin: 0;
+            color: var(--gray-500);
+            font-size: 14px;
+        }
+
+        .rate-shell {
+            padding: var(--space-lg);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-lg);
+        }
+
+        .rate-summary {
+            background: #fff;
+            border: 1px solid var(--gray-100);
+            border-radius: var(--radius-lg);
+            padding: var(--space-lg);
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-md);
+        }
+
+        .summary-top {
+            display: flex;
+            justify-content: space-between;
+            gap: var(--space-lg);
+        }
+
+        .summary-title {
+            font-weight: 700;
+            font-size: 15px;
+            color: var(--gray-900);
+        }
+
+        .summary-sub {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 4px;
+        }
+
+        .summary-score {
+            text-align: right;
+        }
+
+        .summary-avg {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+
+        .summary-stars {
+            display: inline-flex;
+            gap: 2px;
+            margin: 4px 0;
+        }
+
+        .star-icon {
+            font-size: 14px;
+            color: var(--gray-300);
+        }
+
+        .star-icon.filled {
+            color: var(--gray-700);
+        }
+
+        .summary-count {
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+
+        .summary-breakdown {
+            display: grid;
+            gap: 8px;
+        }
+
+        .summary-row {
+            display: grid;
+            grid-template-columns: 24px 1fr 32px;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+
+        .summary-bar {
+            height: 8px;
+            background: var(--gray-100);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .summary-bar span {
+            display: block;
+            height: 100%;
+            background: var(--gray-400);
+            border-radius: 999px;
+        }
+
+        .rate-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-md);
+        }
+
+        .toolbar-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--gray-600);
+        }
+
+        .filter-bar {
+            display: inline-flex;
+            gap: 8px;
+            background: var(--gray-50);
+            border: 1px solid var(--gray-100);
+            border-radius: 999px;
+            padding: 4px;
+        }
+
+        .filter-btn {
+            height: 32px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            background: transparent;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--gray-600);
+            transition: all var(--transition-fast);
+        }
+
+        .filter-btn:hover {
+            color: var(--gray-800);
+            background: #fff;
+            border-color: var(--gray-200);
+        }
+
+        .filter-btn.active {
+            background: #fff;
+            color: var(--gray-900);
+            border-color: var(--gray-200);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .rate-content {
+            display: grid;
+            gap: var(--space-md);
+        }
+
+        .review-card {
+            background: #fff;
+            border-radius: var(--radius-lg);
+            padding: var(--space-md);
+            border: 1px solid var(--gray-100);
+            box-shadow: var(--shadow-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .review-card:hover {
+            box-shadow: var(--shadow);
+            transform: translateY(-2px);
+        }
+
+        .review-header {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+            margin-bottom: var(--space-sm);
+        }
+
+        .product-image {
+            width: 64px;
+            height: 64px;
+            border-radius: var(--radius);
+            object-fit: cover;
+            background: var(--gray-100);
+            flex-shrink: 0;
+        }
+
+        .product-info h3 {
+            margin: 0 0 4px 0;
+            font-size: 15px;
+            color: var(--gray-900);
+            font-weight: 700;
+        }
+
+        .product-info p {
+            margin: 0;
+            font-size: 12px;
+            color: var(--gray-500);
+        }
+
+        .review-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 6px;
+        }
+
+        .star-rating {
+            display: flex;
+            gap: 6px;
+            margin: var(--space-sm) 0;
+        }
+
+        .star {
+            font-size: 28px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--gray-300);
+            user-select: none;
+        }
+
+        .star.active {
+            color: var(--gray-800);
+        }
+
+        .star:hover {
+            transform: scale(1.05);
+        }
+
+        .comment-box {
+            width: 100%;
+            min-height: 88px;
+            padding: 12px;
+            border: 1px solid var(--gray-200);
+            border-radius: 12px;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+            background: var(--gray-50);
+        }
+
+        .comment-box:focus {
+            outline: none;
+            border-color: var(--gray-300);
+            background: #fff;
+        }
+
+        .submit-btn {
+            width: 100%;
+            height: 52px;
+            background: var(--gray-900);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: var(--space-md);
+            transition: all var(--transition-fast);
+        }
+
+        .submit-btn:hover {
+            background: #111;
+            transform: translateY(-1px);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .success-message {
+            text-align: center;
+            padding: 48px 20px;
+            background: #fff;
+            border: 1px solid var(--gray-100);
+            border-radius: 16px;
+        }
+
+        .success-icon {
+            font-size: 56px;
+            margin-bottom: 12px;
+        }
+
+        .success-message h2 {
+            color: var(--gray-900);
+            margin: 0 0 6px 0;
+            font-size: 18px;
+        }
+
+        .success-message p {
+            color: var(--gray-500);
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--gray-500);
+            background: #fff;
+            border: 1px solid var(--gray-100);
+            border-radius: 16px;
+        }
+
+        .error-message {
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            padding: 14px;
+            border-radius: 12px;
+            color: var(--gray-700);
+        }
+
+        .already-rated {
+            background: var(--gray-50);
+            padding: 10px 12px;
+            border-radius: 10px;
+            text-align: center;
+            color: var(--gray-600);
+            font-size: 12px;
+            border: 1px solid var(--gray-100);
+        }
+    </style>
+</head>
+<body>
+    <div class="rate-container">
+        <div class="rate-header">
+            <h1>Order reviews</h1>
+            <p>Share a neutral, independent review of each item</p>
+        </div>
+
+        <div class="rate-shell">
+            <div class="rate-summary" id="rateSummary"></div>
+            <div class="rate-toolbar" id="rateToolbar">
+                <div class="toolbar-title">Sort by</div>
+                <div class="filter-bar" id="filterBar">
+                    <button class="filter-btn active" data-filter="latest">Latest</button>
+                    <button class="filter-btn" data-filter="highest">Highest</button>
+                    <button class="filter-btn" data-filter="lowest">Lowest</button>
+                </div>
+            </div>
+            <div class="rate-content" id="rateContent">
+                <div class="loading">Loading order details...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/utils.js"></script>
+    <script>
+        let orderData = null;
+        let ratings = {};
+        let rateableItems = [];
+        let activeFilter = 'latest';
+
+        async function loadOrderForRating() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const orderId = urlParams.get('order_id');
+            const token = urlParams.get('t');
+
+            if (!orderId || !token) {
+                showError('Invalid rating link');
+                return;
+            }
+
+            try {
+                // Get rating status for this order
+                const res = await fetch(`/api/orders/${orderId}/rating-status?t=${token}`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    showError(data.error || 'Failed to load order');
+                    return;
+                }
+
+                if (!data.can_rate) {
+                    showError('This order cannot be rated yet. Orders can only be rated after delivery.');
+                    return;
+                }
+
+                orderData = data;
+                renderRatingForm();
+            } catch (err) {
+                console.error('Load error:', err);
+                showError('Failed to load order details');
+            }
+        }
+
+        function renderRatingForm() {
+            const content = document.getElementById('rateContent');
+            
+            rateableItems = (orderData.unrated_items || []).filter(item => item.product_id);
+            if (rateableItems.length === 0 && (!orderData.existing_ratings || orderData.existing_ratings.length === 0)) {
+                content.innerHTML = `
+                    <div class="success-message">
+                        <div class="success-icon">⚠️</div>
+                        <h2>Items Unavailable</h2>
+                        <p>We couldn't match your items for rating. Please contact support.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            rateableItems.forEach(item => {
+                ratings[item.product_id] = { stars: 0, comment: '' };
+            });
+
+            renderSummary();
+            renderItems();
+            attachEventListeners();
+        }
+
+        function renderSummary() {
+            const summaryEl = document.getElementById('rateSummary');
+            if (!summaryEl) return;
+
+            const summary = getSummaryData();
+            summaryEl.innerHTML = `
+                <div class="summary-top">
+                    <div>
+                        <div class="summary-title">Order rating summary</div>
+                        <div class="summary-sub">${summary.ratedCount} of ${summary.totalItems} items rated</div>
+                    </div>
+                    <div class="summary-score">
+                        <div class="summary-avg">${summary.average.toFixed(1)}</div>
+                        <div class="summary-stars">${renderStarIcons(summary.average)}</div>
+                        <div class="summary-count">${summary.ratedCount} review${summary.ratedCount === 1 ? '' : 's'}</div>
+                    </div>
+                </div>
+                <div class="summary-breakdown">
+                    ${[5,4,3,2,1].map(star => `
+                        <div class="summary-row">
+                            <span>${star}</span>
+                            <div class="summary-bar"><span style="width: ${summary.totalRated === 0 ? 0 : (summary.counts[star] / summary.totalRated) * 100}%"></span></div>
+                            <span>${summary.counts[star]}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function renderStarIcons(value) {
+            const rounded = Math.round(value);
+            return [1,2,3,4,5].map(n => `<span class="star-icon ${n <= rounded ? 'filled' : ''}">★</span>`).join('');
+        }
+
+        function getSummaryData() {
+            const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+            let total = 0;
+            let totalRated = 0;
+
+            if (orderData.existing_ratings && orderData.existing_ratings.length > 0) {
+                orderData.existing_ratings.forEach(r => {
+                    if (r.stars) {
+                        counts[r.stars] = (counts[r.stars] || 0) + 1;
+                        total += r.stars;
+                        totalRated += 1;
+                    }
+                });
+            }
+
+            Object.values(ratings).forEach(r => {
+                if (r.stars > 0) {
+                    counts[r.stars] = (counts[r.stars] || 0) + 1;
+                    total += r.stars;
+                    totalRated += 1;
+                }
+            });
+
+            const ratedCount = totalRated;
+            const totalItems = (orderData.existing_ratings ? orderData.existing_ratings.length : 0) + rateableItems.length;
+            const average = totalRated === 0 ? 0 : total / totalRated;
+
+            return { counts, totalRated, ratedCount, totalItems, average };
+        }
+
+        function renderItems() {
+            const content = document.getElementById('rateContent');
+            let html = '';
+
+            if (orderData.existing_ratings && orderData.existing_ratings.length > 0) {
+                html += `<div class="already-rated">You already reviewed ${orderData.existing_ratings.length} item(s) in this order</div>`;
+            }
+
+            const itemsToRender = getSortedItems(rateableItems);
+            if (itemsToRender.length === 0) {
+                html += `
+                    <div class="success-message">
+                        <div class="success-icon">✅</div>
+                        <h2>All set</h2>
+                        <p>Thanks for reviewing your order.</p>
+                    </div>
+                `;
+                content.innerHTML = html;
+                return;
+            }
+
+            itemsToRender.forEach(item => {
+                const name = item.product || 'Item';
+                const price = typeof item.price === 'number' ? item.price : Number(item.price || 0);
+                html += `
+                    <div class="review-card">
+                        <div class="review-header">
+                            <img class="product-image" src="${item.image_url || '/images/placeholder.png'}" alt="${name}">
+                            <div class="product-info">
+                                <h3>${name}</h3>
+                                <p>$${price.toFixed(2)} · Qty ${item.quantity || 1}</p>
+                                <div class="review-meta">
+                                    <span>Reviewer: You</span>
+                                    <span>Order #${orderData.order_id}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="star-rating" data-product-id="${item.product_id}">
+                            ${[1,2,3,4,5].map(n => `<span class="star" data-value="${n}">★</span>`).join('')}
+                        </div>
+                        <textarea 
+                            class="comment-box" 
+                            placeholder="Share neutral, helpful details (optional)"
+                            data-product-id="${item.product_id}"
+                        ></textarea>
+                    </div>
+                `;
+            });
+
+            html += `<button class="submit-btn" id="submitBtn" disabled>Submit reviews</button>`;
+            content.innerHTML = html;
+        }
+
+        function getSortedItems(items) {
+            const sorted = [...items];
+            if (activeFilter === 'highest') {
+                sorted.sort((a, b) => (ratings[b.product_id]?.stars || 0) - (ratings[a.product_id]?.stars || 0));
+            } else if (activeFilter === 'lowest') {
+                sorted.sort((a, b) => (ratings[a.product_id]?.stars || 0) - (ratings[b.product_id]?.stars || 0));
+            } else {
+                sorted.sort((a, b) => (b.id || 0) - (a.id || 0));
+            }
+            return sorted;
+        }
+
+        function attachEventListeners() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.onclick = () => {
+                    activeFilter = btn.dataset.filter;
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === activeFilter));
+                    renderItems();
+                    attachEventListeners();
+                };
+            });
+
+            // Star clicks
+            document.querySelectorAll('.star-rating').forEach(container => {
+                const productId = parseInt(container.dataset.productId);
+                const stars = container.querySelectorAll('.star');
+                
+                stars.forEach((star, index) => {
+                    star.addEventListener('click', () => {
+                        const value = index + 1;
+                        ratings[productId].stars = value;
+                        
+                        // Update visual
+                        stars.forEach((s, i) => {
+                            s.classList.toggle('active', i < value);
+                        });
+                        
+                        renderSummary();
+                        checkCanSubmit();
+                    });
+                });
+            });
+
+            // Comment boxes
+            document.querySelectorAll('.comment-box').forEach(textarea => {
+                const productId = parseInt(textarea.dataset.productId);
+                textarea.addEventListener('input', (e) => {
+                    ratings[productId].comment = e.target.value;
+                });
+            });
+
+            // Submit button
+            const submitBtn = document.getElementById('submitBtn');
+            if (submitBtn) {
+                submitBtn.addEventListener('click', submitRatings);
+            }
+        }
+
+        function checkCanSubmit() {
+            const allRated = Object.values(ratings).every(r => r.stars > 0);
+            document.getElementById('submitBtn').disabled = !allRated;
+        }
+
+        async function submitRatings() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const orderId = urlParams.get('order_id');
+            const token = urlParams.get('t');
+            const btn = document.getElementById('submitBtn');
+
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+
+            const ratingsArray = Object.entries(ratings)
+                .filter(([_, r]) => r.stars > 0)
+                .map(([productId, r]) => ({
+                    product_id: parseInt(productId),
+                    stars: r.stars,
+                    comment: r.comment
+                }));
+
+            try {
+                const res = await fetch(`/api/ratings/bulk?t=${token}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_id: parseInt(orderId),
+                        ratings: ratingsArray
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to submit ratings');
+                }
+
+                showSuccess();
+            } catch (err) {
+                console.error('Submit error:', err);
+                alert('Failed to submit ratings: ' + err.message);
+                btn.disabled = false;
+                btn.textContent = 'Submit Ratings';
+            }
+        }
+
+        function showSuccess() {
+            document.getElementById('rateContent').innerHTML = `
+                <div class="success-message">
+                    <div class="success-icon">🎉</div>
+                    <h2>Thank You!</h2>
+                    <p>Your ratings help us serve you better</p>
+                </div>
+            `;
+        }
+
+        function showError(message) {
+            const summaryEl = document.getElementById('rateSummary');
+            const toolbar = document.getElementById('rateToolbar');
+            if (summaryEl) summaryEl.innerHTML = '';
+            if (toolbar) toolbar.style.display = 'none';
+            document.getElementById('rateContent').innerHTML = `
+                <div class="error-message">${message}</div>
+            `;
+        }
+
+        // Initialize
+        loadOrderForRating();
+    </script>
+</body>
+</html>

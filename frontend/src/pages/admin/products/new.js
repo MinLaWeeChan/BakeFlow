@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import Image from 'next/image';
 import Sidebar from '../../../components/Sidebar';
 import TopNavbar from '../../../components/TopNavbar';
 import { useNotifications } from '../../../contexts/NotificationContext';
@@ -168,7 +169,7 @@ export default function NewProductPage() {
                           <input type="file" accept="image/*" className="form-control" onChange={onFileChange} />
                           {previewUrl && (
                             <div className="mt-3" style={{ maxWidth: 280 }}>
-                              <img src={previewUrl} alt="preview" className="img-fluid rounded" />
+                              <Image src={previewUrl} alt="preview" width={280} height={280} className="img-fluid rounded" style={{ height: 'auto' }} unoptimized />
                             </div>
                           )}
                         </div>

@@ -5,7 +5,13 @@
 function getUserId() {
     const params = new URLSearchParams(window.location.search);
     const userId = params.get('user_id');
-    if (userId) return userId;
+    if (userId && userId !== 'guest') return userId;
+    try {
+        const storedPsid = localStorage.getItem('bf_psid');
+        if (storedPsid) return storedPsid;
+        const storedUserId = localStorage.getItem('bf_user_id');
+        if (storedUserId && storedUserId !== 'guest') return storedUserId;
+    } catch (e) {}
 
     const tok = getWebviewToken();
     if (tok) return `t_${tok.slice(0, 16)}`;
@@ -14,11 +20,33 @@ function getUserId() {
 }
 
 function getWebviewToken() {
-    return new URLSearchParams(window.location.search).get('t') || '';
+    const tok = new URLSearchParams(window.location.search).get('t');
+    if (tok) return tok;
+    try {
+        return localStorage.getItem('bf_webview_token') || '';
+    } catch (e) {
+        return '';
+    }
+}
+
+function storeIdentityParams() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const tok = params.get('t');
+        const userId = params.get('user_id');
+        if (tok) localStorage.setItem('bf_webview_token', tok);
+        if (userId && userId !== 'guest') localStorage.setItem('bf_user_id', userId);
+    } catch (e) {}
 }
 
 function goToSavedOrders(userId) {
-    const uid = userId || new URLSearchParams(window.location.search).get('user_id') || '';
+    let uid = userId || new URLSearchParams(window.location.search).get('user_id') || '';
+    if (!uid || uid === 'guest') {
+        uid = getUserId();
+    }
+    if (uid === 'guest') {
+        uid = '';
+    }
     const tok = getWebviewToken();
     const origin = window.location.origin;
 
@@ -86,3 +114,4 @@ window.escapeHtml = escapeHtml;
 window.timeAgo = timeAgo;
 window.adjustSafePadding = adjustSafePadding;
 window.wireNavigationLinks = wireNavigationLinks;
+storeIdentityParams();

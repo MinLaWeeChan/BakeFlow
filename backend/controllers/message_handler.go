@@ -1,8 +1,11 @@
 package controllers
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
+
+	"bakeflow/models"
 )
 
 // handleMessage processes text messages from users
@@ -43,6 +46,12 @@ func handleMessage(userID, messageText string) {
 		strings.Contains(msgLower, "ကူညီ") {
 		showHelp(userID)
 		return
+	}
+
+	if msgLower == "confirm" {
+		if confirmMessengerVerification(userID) {
+			return
+		}
 	}
 
 	// Order History
@@ -239,4 +248,28 @@ func handleMessage(userID, messageText string) {
 			SendMessage(userID, "Type 'menu' to see products or 'help' for assistance.")
 		}
 	}
+}
+
+func confirmMessengerVerification(userID string) bool {
+	pending, err := models.HasPendingMessengerVerification(userID)
+	if err != nil {
+		SendMessage(userID, "Sorry, something went wrong. Please try again later.")
+		return true
+	}
+	if !pending {
+		return false
+	}
+	if err := models.MarkMessengerVerificationConfirmed(userID); err != nil {
+		SendMessage(userID, "Sorry, something went wrong. Please try again later.")
+		return true
+	}
+	if err := models.SetCustomerVerification(userID, true, "messenger_confirmed", sql.NullInt64{Valid: false}); err != nil {
+		SendMessage(userID, "Sorry, something went wrong. Please try again later.")
+		return true
+	}
+	_ = models.LogAdminAction(userID, "verify_customer_messenger_confirmed", "", map[string]interface{}{
+		"channel": "messenger",
+	}, sql.NullInt64{Valid: false})
+	SendMessage(userID, "Thanks! Your account is verified. You can continue ordering as normal.")
+	return true
 }
