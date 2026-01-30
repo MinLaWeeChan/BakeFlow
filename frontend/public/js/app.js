@@ -16,7 +16,7 @@ async function init() {
     }
     
     // Render UI
-    renderCategoryTabs(); // Render category tabs before products
+    renderTagChips();
     renderProducts();
     updateCart();
     await Promise.resolve(renderRecentOrders());

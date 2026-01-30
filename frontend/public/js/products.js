@@ -7,7 +7,9 @@ window.products = [];
 window.stockStatus = {}; // Real-time stock status cache
 window.productFilters = {
     search: '',
-    category: 'all'
+    category: 'all',
+    tag: 'all',
+    subTag: 'all'
 };
 window.productsLoadError = '';
 
@@ -99,6 +101,7 @@ async function loadProducts() {
                 availability_status: p.availability_status || 'available',
                 stock: p.stock || 0,
                 has_customization: true,
+                tags: Array.isArray(p.tags) ? p.tags : [],
                 avg_rating: p.avg_rating || 0,
                 rating_count: p.rating_count || 0
             };
@@ -144,6 +147,16 @@ function getFilteredProducts() {
     // Filter by category
     if (window.productFilters.category && window.productFilters.category !== 'all') {
         filtered = filtered.filter(p => p.category === window.productFilters.category);
+    }
+
+    if (window.productFilters.tag && window.productFilters.tag !== 'all') {
+        const target = window.productFilters.tag;
+        filtered = filtered.filter(p => Array.isArray(p.tags) && p.tags.includes(target));
+    }
+    
+    if (window.productFilters.subTag && window.productFilters.subTag !== 'all') {
+        const target = window.productFilters.subTag;
+        filtered = filtered.filter(p => Array.isArray(p.tags) && p.tags.includes(target));
     }
     
     // Filter by search
@@ -320,6 +333,7 @@ function renderCategoryTabs() {
     `).join('');
     
     if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    renderTagChips();
 }
 
 /**
@@ -327,7 +341,10 @@ function renderCategoryTabs() {
  */
 function handleCategoryClick(categoryId) {
     window.productFilters.category = categoryId;
+    window.productFilters.tag = 'all';
+    window.productFilters.subTag = 'all';
     renderCategoryTabs();
+    renderTagChips();
     renderProducts();
 }
 
@@ -351,12 +368,142 @@ function handleSearchInput(value) {
 function clearFilters() {
     window.productFilters.search = '';
     window.productFilters.category = 'all';
+    window.productFilters.tag = 'all';
+    window.productFilters.subTag = 'all';
     
     const searchInput = document.getElementById('productSearch');
     if (searchInput) searchInput.value = '';
     
     renderCategoryTabs();
+    renderTagChips();
+    renderSubTagChips();
     renderProducts();
+}
+
+function handleTagClick(tag) {
+    window.productFilters.tag = tag;
+    window.productFilters.subTag = 'all';
+    renderTagChips();
+    renderSubTagChips();
+    renderProducts();
+}
+
+function handleSubTagClick(tag) {
+    window.productFilters.subTag = tag;
+    renderSubTagChips();
+    renderProducts();
+}
+
+function formatTagLabel(tag) {
+    const words = String(tag || '')
+        .replace(/[-_]+/g, ' ')
+        .trim()
+        .split(/\s+/g)
+        .filter(Boolean);
+    if (!words.length) return '';
+    return words
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
+function escapeAttr(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getTagsForCurrentCategory() {
+    const category = window.productFilters.category;
+    const items = category && category !== 'all'
+        ? window.products.filter(p => p.category === category)
+        : window.products;
+    const set = new Set();
+    items.forEach(p => {
+        if (!Array.isArray(p.tags)) return;
+        p.tags.forEach(t => {
+            if (typeof t === 'string' && t.trim()) set.add(t.trim());
+        });
+    });
+    return Array.from(set)
+        .filter(t => {
+            if (!t.includes('-')) return true;
+            const parent = t.split('-')[0];
+            return !parent || !set.has(parent);
+        })
+        .sort((a, b) => a.localeCompare(b));
+}
+
+function getSubTagsForMainTag(mainTag) {
+    if (!mainTag || mainTag === 'all') return [];
+    const items = window.products.filter(p => Array.isArray(p.tags) && p.tags.includes(mainTag));
+    const prefix = `${mainTag}-`;
+    const set = new Set();
+    items.forEach(p => {
+        p.tags.forEach(t => {
+            if (typeof t !== 'string') return;
+            const v = t.trim();
+            if (!v || v === mainTag) return;
+            if (!v.startsWith(prefix) || v.length <= prefix.length) return;
+            set.add(v);
+        });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function renderTagChips() {
+    const el = document.getElementById('productTagChips');
+    if (!el) return;
+
+    const tags = getTagsForCurrentCategory();
+    if (!tags.length) {
+        el.style.display = 'none';
+        const sub = document.getElementById('productSubTagChips');
+        if (sub) sub.style.display = 'none';
+        return;
+    }
+
+    el.style.display = 'flex';
+    el.innerHTML = [
+        `<button type="button" class="tag-chip${window.productFilters.tag === 'all' ? ' selected' : ''}" data-tag="all" onclick="handleTagClick(this.getAttribute('data-tag'))"><i data-lucide="list-filter"></i>All</button>`,
+        ...tags.map(t => {
+            const label = escapeHtml(formatTagLabel(t) || t);
+            const selected = window.productFilters.tag === t ? ' selected' : '';
+            return `<button type="button" class="tag-chip${selected}" data-tag="${escapeAttr(t)}" onclick="handleTagClick(this.getAttribute('data-tag'))"><i data-lucide="tag"></i>${label}</button>`;
+        })
+    ].join('');
+
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    renderSubTagChips();
+}
+
+function renderSubTagChips() {
+    const el = document.getElementById('productSubTagChips');
+    if (!el) return;
+
+    const main = window.productFilters.tag;
+    const tags = getSubTagsForMainTag(main);
+    if (!main || main === 'all' || !tags.length) {
+        el.style.display = 'none';
+        return;
+    }
+
+    el.style.display = 'flex';
+    const prefix = `${main}-`;
+    const mainLabel = escapeHtml(formatTagLabel(main) || main);
+    el.innerHTML = [
+        `<button type="button" class="tag-chip${window.productFilters.subTag === 'all' ? ' selected' : ''}" data-tag="all" onclick="handleSubTagClick(this.getAttribute('data-tag'))"><i data-lucide="layers"></i>All ${mainLabel} Types</button>`,
+        ...tags.map(t => {
+            const child = t.startsWith(prefix) ? t.slice(prefix.length) : t;
+            const label = escapeHtml(formatTagLabel(child) || child || t);
+            const selected = window.productFilters.subTag === t ? ' selected' : '';
+            return `<button type="button" class="tag-chip${selected}" data-tag="${escapeAttr(t)}" onclick="handleSubTagClick(this.getAttribute('data-tag'))"><i data-lucide="tag"></i>${label}</button>`;
+        })
+    ].join('');
+
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
 }
 
 function getBogoPromotionForProduct(productId) {
@@ -430,7 +577,10 @@ function renderProducts() {
     const filterInfoEl = document.getElementById('productsFilterInfo');
     
     const filtered = getFilteredProducts();
-    const isFiltering = window.productFilters.search || window.productFilters.category !== 'all';
+    const isFiltering = window.productFilters.search
+        || window.productFilters.category !== 'all'
+        || window.productFilters.tag !== 'all'
+        || window.productFilters.subTag !== 'all';
     
     // Update count
     if (countEl) {

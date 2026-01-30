@@ -13,6 +13,7 @@ type Product struct {
 	Name        string       `json:"name"`
 	Description string       `json:"description"`
 	Category    string       `json:"category"`
+	Tags        []string     `json:"tags"`
 	Price       float64      `json:"price"`
 	Stock       int          `json:"stock"`
 	ImageURL    string       `json:"image_url"`
@@ -162,7 +163,7 @@ func IncrementPurchases(db *sql.DB, productID int) error {
 // GetActiveProducts returns active, non-deleted products (limited)
 func GetActiveProducts(db *sql.DB, limit int, offset int, category string, search string) ([]Product, error) {
 	query := `
-		SELECT id, name, description, category, price, stock, image_url, status, created_at, updated_at
+		SELECT id, name, description, category, COALESCE(tags, '[]'::jsonb) as tags, price, stock, image_url, status, created_at, updated_at
 		FROM products
 		WHERE deleted_at IS NULL AND status = 'active'
 		ORDER BY created_at DESC
@@ -179,9 +180,11 @@ func GetActiveProducts(db *sql.DB, limit int, offset int, category string, searc
 		var p Product
 		var desc sql.NullString
 		var img sql.NullString
-		if err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &p.Price, &p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var tagsJSON []byte
+		if err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &tagsJSON, &p.Price, &p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
+		p.Tags = decodeStringArrayJSON(tagsJSON)
 		if desc.Valid {
 			p.Description = desc.String
 		}
@@ -196,20 +199,22 @@ func GetActiveProducts(db *sql.DB, limit int, offset int, category string, searc
 // GetProductByID fetches a single product by ID
 func GetProductByID(db *sql.DB, id int) (*Product, error) {
 	query := `
-		SELECT id, name, description, category, price, stock, image_url, status, created_at, updated_at
+		SELECT id, name, description, category, COALESCE(tags, '[]'::jsonb) as tags, price, stock, image_url, status, created_at, updated_at
 		FROM products
 		WHERE id = $1 AND deleted_at IS NULL
 	`
 	var p Product
 	var desc sql.NullString
 	var img sql.NullString
-	err := db.QueryRow(query, id).Scan(&p.ID, &p.Name, &desc, &p.Category, &p.Price, &p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt)
+	var tagsJSON []byte
+	err := db.QueryRow(query, id).Scan(&p.ID, &p.Name, &desc, &p.Category, &tagsJSON, &p.Price, &p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	p.Tags = decodeStringArrayJSON(tagsJSON)
 	if desc.Valid {
 		p.Description = desc.String
 	}
@@ -222,7 +227,7 @@ func GetProductByID(db *sql.DB, id int) (*Product, error) {
 // GetRecentProducts returns recent, non-deleted products regardless of status
 func GetRecentProducts(db *sql.DB, limit int, offset int) ([]Product, error) {
 	query := `
-		SELECT id, name, description, category, price, stock, image_url, status, created_at, updated_at
+		SELECT id, name, description, category, COALESCE(tags, '[]'::jsonb) as tags, price, stock, image_url, status, created_at, updated_at
 		FROM products
 		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -239,9 +244,11 @@ func GetRecentProducts(db *sql.DB, limit int, offset int) ([]Product, error) {
 		var p Product
 		var desc sql.NullString
 		var img sql.NullString
-		if err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &p.Price, &p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var tagsJSON []byte
+		if err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &tagsJSON, &p.Price, &p.Stock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
+		p.Tags = decodeStringArrayJSON(tagsJSON)
 		if desc.Valid {
 			p.Description = desc.String
 		}
@@ -251,4 +258,13 @@ func GetRecentProducts(db *sql.DB, limit int, offset int) ([]Product, error) {
 		products = append(products, p)
 	}
 	return products, rows.Err()
+}
+
+func decodeStringArrayJSON(b []byte) []string {
+	var out []string
+	_ = json.Unmarshal(b, &out)
+	if out == nil {
+		return []string{}
+	}
+	return out
 }

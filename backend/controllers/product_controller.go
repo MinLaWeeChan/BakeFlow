@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,7 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 	category := r.URL.Query().Get("category")
 	status := r.URL.Query().Get("status")
 	search := r.URL.Query().Get("search")
+	tag := r.URL.Query().Get("tag")
 	minPriceStr := r.URL.Query().Get("min_price")
 	maxPriceStr := r.URL.Query().Get("max_price")
 	limitStr := r.URL.Query().Get("limit")
@@ -34,7 +36,7 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 
 	// Build query
 	query := `
-		SELECT p.id, p.name, p.description, p.category, p.price, p.stock,
+		SELECT p.id, p.name, p.description, p.category, COALESCE(p.tags, '[]'::jsonb) as tags, p.price, p.stock,
 		       COALESCE(p.reserved_stock, 0) as reserved_stock,
 		       p.image_url, p.status, p.created_at, p.updated_at,
 		       COALESCE(pa.views, 0) as views, COALESCE(pa.purchases, 0) as purchases,
@@ -61,6 +63,14 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 		query += fmt.Sprintf(" AND (p.name ILIKE $%d OR p.description ILIKE $%d)", argNum, argNum)
 		args = append(args, "%"+search+"%")
 		argNum++
+	}
+	if tag != "" {
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		if tag != "" {
+			query += fmt.Sprintf(" AND COALESCE(p.tags, '[]'::jsonb) ? $%d", argNum)
+			args = append(args, tag)
+			argNum++
+		}
 	}
 	if minPriceStr != "" {
 		if minPrice, err := strconv.ParseFloat(minPriceStr, 64); err == nil {
@@ -126,12 +136,14 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 		var ratingCount int
 		var desc sql.NullString
 		var img sql.NullString
-		err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &p.Price,
+		var tagsJSON []byte
+		err := rows.Scan(&p.ID, &p.Name, &desc, &p.Category, &tagsJSON, &p.Price,
 			&p.Stock, &reservedStock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt, &views, &purchases,
 			&avgRating, &ratingCount)
 		if err != nil {
 			continue
 		}
+		p.Tags = decodeStringArrayJSON(tagsJSON)
 		if desc.Valid {
 			p.Description = desc.String
 		}
@@ -156,6 +168,7 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 			"name":                p.Name,
 			"description":         p.Description,
 			"category":            p.Category,
+			"tags":                p.Tags,
 			"price":               p.Price,
 			"image_url":           p.ImageURL,
 			"status":              p.Status,
@@ -179,6 +192,49 @@ func (pc *ProductController) GetProducts(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+func (pc *ProductController) GetProductTags(w http.ResponseWriter, r *http.Request) {
+	rows, err := pc.DB.Query(`
+		SELECT DISTINCT jsonb_array_elements_text(
+			CASE
+				WHEN jsonb_typeof(tags) = 'array' THEN tags
+				ELSE '[]'::jsonb
+			END
+		) AS tag
+		FROM products
+		WHERE deleted_at IS NULL
+		ORDER BY tag ASC
+	`)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to fetch tags", err)
+		return
+	}
+	defer rows.Close()
+
+	seen := map[string]struct{}{}
+	tags := []string{}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			continue
+		}
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+
+	respondWithJSON(w, http.StatusOK, map[string]interface{}{
+		"tags":  tags,
+		"count": len(tags),
+	})
+}
+
 // GetProduct handles GET /api/products/:id - get single product
 func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -189,7 +245,7 @@ func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) 
 	}
 
 	query := `
-		SELECT p.id, p.name, p.description, p.category, p.price, p.stock,
+		SELECT p.id, p.name, p.description, p.category, COALESCE(p.tags, '[]'::jsonb) as tags, p.price, p.stock,
 		       COALESCE(p.reserved_stock, 0) as reserved_stock,
 		       p.image_url, p.status, p.created_at, p.updated_at,
 		       COALESCE(pa.views, 0) as views, COALESCE(pa.purchases, 0) as purchases
@@ -203,8 +259,9 @@ func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) 
 	var views, purchases int
 	var desc sql.NullString
 	var img sql.NullString
+	var tagsJSON []byte
 	err = pc.DB.QueryRow(query, id).Scan(
-		&p.ID, &p.Name, &desc, &p.Category, &p.Price,
+		&p.ID, &p.Name, &desc, &p.Category, &tagsJSON, &p.Price,
 		&p.Stock, &reservedStock, &img, &p.Status, &p.CreatedAt, &p.UpdatedAt,
 		&views, &purchases,
 	)
@@ -222,6 +279,7 @@ func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) 
 	if img.Valid {
 		p.ImageURL = img.String
 	}
+	p.Tags = decodeStringArrayJSON(tagsJSON)
 
 	availableStock := p.Stock - reservedStock
 	if availableStock < 0 {
@@ -239,6 +297,7 @@ func (pc *ProductController) GetProduct(w http.ResponseWriter, r *http.Request) 
 			"name":         p.Name,
 			"description":  p.Description,
 			"category":     p.Category,
+			"tags":         p.Tags,
 			"price":        p.Price,
 			"stock":        p.Stock,
 			"image_url":    p.ImageURL,
@@ -266,6 +325,7 @@ func (pc *ProductController) CreateProduct(w http.ResponseWriter, r *http.Reques
 		respondWithError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
+	product.Tags = normalizeTags(product.Tags)
 
 	// Set default status if not provided
 	if product.Status == "" {
@@ -274,13 +334,14 @@ func (pc *ProductController) CreateProduct(w http.ResponseWriter, r *http.Reques
 
 	// Insert product
 	query := `
-		INSERT INTO products (name, description, category, price, stock, image_url, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO products (name, description, category, tags, price, stock, image_url, status)
+		VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
 		RETURNING id, created_at, updated_at
 	`
+	tagsEncoded := encodeStringArrayJSON(product.Tags)
 	err := pc.DB.QueryRow(
 		query,
-		product.Name, product.Description, product.Category,
+		product.Name, product.Description, product.Category, tagsEncoded,
 		product.Price, product.Stock, product.ImageURL, product.Status,
 	).Scan(&product.ID, &product.CreatedAt, &product.UpdatedAt)
 
@@ -325,13 +386,14 @@ func (pc *ProductController) UpdateProduct(w http.ResponseWriter, r *http.Reques
 
 	// Get existing product for comparison
 	var oldProduct models.Product
-	query := `SELECT id, name, description, category, price, stock, image_url, status 
+	query := `SELECT id, name, description, category, COALESCE(tags, '[]'::jsonb) as tags, price, stock, image_url, status 
 	          FROM products WHERE id = $1 AND deleted_at IS NULL`
 	var desc sql.NullString
 	var img sql.NullString
+	var oldTagsJSON []byte
 	err = pc.DB.QueryRow(query, id).Scan(
 		&oldProduct.ID, &oldProduct.Name, &desc,
-		&oldProduct.Category, &oldProduct.Price, &oldProduct.Stock,
+		&oldProduct.Category, &oldTagsJSON, &oldProduct.Price, &oldProduct.Stock,
 		&img, &oldProduct.Status,
 	)
 	if err == sql.ErrNoRows {
@@ -348,6 +410,7 @@ func (pc *ProductController) UpdateProduct(w http.ResponseWriter, r *http.Reques
 	if img.Valid {
 		oldProduct.ImageURL = img.String
 	}
+	oldProduct.Tags = decodeStringArrayJSON(oldTagsJSON)
 
 	// Decode new product data
 	var product models.Product
@@ -362,18 +425,20 @@ func (pc *ProductController) UpdateProduct(w http.ResponseWriter, r *http.Reques
 		respondWithError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
+	product.Tags = normalizeTags(product.Tags)
 
 	// Update product
 	updateQuery := `
 		UPDATE products 
-		SET name = $1, description = $2, category = $3, price = $4, 
-		    stock = $5, image_url = $6, status = $7
-		WHERE id = $8 AND deleted_at IS NULL
+		SET name = $1, description = $2, category = $3, tags = $4::jsonb, price = $5, 
+		    stock = $6, image_url = $7, status = $8
+		WHERE id = $9 AND deleted_at IS NULL
 		RETURNING updated_at
 	`
+	tagsEncoded := encodeStringArrayJSON(product.Tags)
 	err = pc.DB.QueryRow(
 		updateQuery,
-		product.Name, product.Description, product.Category,
+		product.Name, product.Description, product.Category, tagsEncoded,
 		product.Price, product.Stock, product.ImageURL, product.Status, id,
 	).Scan(&product.UpdatedAt)
 
@@ -841,4 +906,44 @@ func respondWithError(w http.ResponseWriter, code int, message string, err error
 			return ""
 		}(),
 	})
+}
+
+func decodeStringArrayJSON(b []byte) []string {
+	var out []string
+	_ = json.Unmarshal(b, &out)
+	if out == nil {
+		return []string{}
+	}
+	return out
+}
+
+func encodeStringArrayJSON(tags []string) string {
+	b, err := json.Marshal(tags)
+	if err != nil || len(b) == 0 {
+		return "[]"
+	}
+	return string(b)
+}
+
+func normalizeTags(tags []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(tags))
+	for _, t := range tags {
+		v := strings.ToLower(strings.TrimSpace(t))
+		if v == "" {
+			continue
+		}
+		if len(v) > 32 {
+			v = v[:32]
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+		if len(out) >= 20 {
+			break
+		}
+	}
+	return out
 }

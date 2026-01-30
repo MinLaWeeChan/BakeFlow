@@ -36,6 +36,16 @@
     font-weight: 600;
 }
 
+#productTagChips {
+    margin: var(--space-sm) 0 var(--space-md);
+    padding: 0 var(--space-xs);
+}
+
+#productSubTagChips {
+    margin: calc(var(--space-xs) * -1) 0 var(--space-md);
+    padding: 0 var(--space-xs);
+}
+
 /* ========== Product Grid ========== */
 .products {
     display: grid;

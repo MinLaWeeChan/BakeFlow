@@ -29,6 +29,11 @@ export default function ProductFormPage() {
     status: 'draft'
   });
 
+  const [tagsInput, setTagsInput] = useState('');
+  const [tagsList, setTagsList] = useState([]);
+  const [availableTags, setAvailableTags] = useState([]);
+  const [tagsOpen, setTagsOpen] = useState(false);
+
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -56,6 +61,8 @@ export default function ProductFormPage() {
           image_url: data.product.image_url || '',
           status: data.product.status || 'draft'
         });
+        setTagsList(Array.isArray(data.product.tags) ? data.product.tags : []);
+        setTagsInput('');
         if (data.product.image_url) {
           setPreviewUrl(data.product.image_url);
         } else {
@@ -72,6 +79,71 @@ export default function ProductFormPage() {
   useEffect(() => {
     fetchProduct();
   }, [fetchProduct]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/products/tags`);
+        const data = await res.json();
+        if (!cancelled && res.ok) {
+          const norm = (value) => {
+            const v = String(value || '').trim().toLowerCase();
+            if (!v) return '';
+            return v.length > 32 ? v.slice(0, 32) : v;
+          };
+          const list = Array.isArray(data.tags) ? data.tags : [];
+          const set = new Set(list.map((t) => norm(t)).filter(Boolean));
+          setAvailableTags(Array.from(set).sort((a, b) => a.localeCompare(b)));
+        }
+      } catch {
+        if (!cancelled) setAvailableTags([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [API_BASE]);
+
+  const normalizeTag = (value) => {
+    const v = String(value || '').trim().toLowerCase();
+    if (!v) return '';
+    return v.length > 32 ? v.slice(0, 32) : v;
+  };
+
+  const parseTagsFromText = (text) => {
+    return String(text || '')
+      .split(',')
+      .map((t) => normalizeTag(t))
+      .filter(Boolean);
+  };
+
+  const addTagsFromText = (text) => {
+    const incoming = parseTagsFromText(text);
+    if (!incoming.length) return;
+    setAvailableTags((prev) => {
+      const set = new Set(prev.map((t) => normalizeTag(t)));
+      incoming.forEach((t) => set.add(t));
+      return Array.from(set).sort((a, b) => a.localeCompare(b));
+    });
+    setTagsList((prev) => {
+      const existing = new Set(prev.map((t) => normalizeTag(t)));
+      const next = [...prev];
+      for (const t of incoming) {
+        if (!existing.has(t)) {
+          next.push(t);
+          existing.add(t);
+        }
+        if (next.length >= 20) break;
+      }
+      return next;
+    });
+  };
+
+  const removeTag = (tag) => {
+    const target = normalizeTag(tag);
+    setTagsList((prev) => prev.filter((t) => normalizeTag(t) !== target));
+  };
 
   const validate = () => {
     const newErrors = {};
@@ -129,6 +201,9 @@ export default function ProductFormPage() {
         body: JSON.stringify({
           ...form,
           image_url: imageUrl,
+          tags: Array.from(
+            new Set([...tagsList, ...parseTagsFromText(tagsInput)].map((t) => normalizeTag(t)).filter(Boolean))
+          ).slice(0, 20),
           price: parseFloat(form.price),
           stock: parseInt(form.stock)
         })
@@ -158,6 +233,26 @@ export default function ProductFormPage() {
       document.getElementById('product-form').requestSubmit();
     }, 100);
   };
+
+  const selectedTagSet = new Set(tagsList.map((t) => normalizeTag(t)));
+  const availableTagSet = new Set(availableTags.map((t) => normalizeTag(t)));
+  const normalizedTagsInput = normalizeTag(tagsInput);
+  const tagSuggestions = normalizedTagsInput
+    ? availableTags
+      .filter((t) => {
+        const v = normalizeTag(t);
+        return v && !selectedTagSet.has(v) && v.includes(normalizedTagsInput);
+      })
+      .slice(0, 8)
+    : availableTags
+      .filter((t) => {
+        const v = normalizeTag(t);
+        return v && !selectedTagSet.has(v);
+      })
+      .slice(0, 12);
+  const canCreateTag = normalizedTagsInput
+    && !selectedTagSet.has(normalizedTagsInput)
+    && !availableTagSet.has(normalizedTagsInput);
 
   return (
     <>
@@ -259,6 +354,88 @@ export default function ProductFormPage() {
                               <option value="Breads">Breads</option>
                             </select>
                             {errors.category && <div className="invalid-feedback">{errors.category}</div>}
+                          </div>
+
+                          <div className="mb-3">
+                            <label className="form-label fw-semibold">Tags</label>
+                            {tagsList.length > 0 && (
+                              <div className="d-flex flex-wrap gap-2 mb-2">
+                                {tagsList.map((t) => (
+                                  <span key={t} className="badge text-bg-secondary d-inline-flex align-items-center gap-2 px-3 py-2">
+                                    <span>{t}</span>
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm btn-link p-0 text-white text-decoration-none"
+                                      aria-label={`Remove tag ${t}`}
+                                      onClick={() => removeTag(t)}
+                                      style={{ lineHeight: 1 }}
+                                    >
+                                      <i className="bi bi-x-lg"></i>
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <div className="position-relative">
+                              <input
+                                type="text"
+                                className="form-control"
+                                value={tagsInput}
+                                onChange={(e) => setTagsInput(e.target.value)}
+                                onFocus={() => setTagsOpen(true)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ',') {
+                                    e.preventDefault();
+                                    addTagsFromText(tagsInput);
+                                    setTagsInput('');
+                                  } else if (e.key === 'Backspace' && !tagsInput && tagsList.length > 0) {
+                                    removeTag(tagsList[tagsList.length - 1]);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (tagsInput.includes(',')) {
+                                    addTagsFromText(tagsInput);
+                                    setTagsInput('');
+                                  }
+                                  setTimeout(() => setTagsOpen(false), 120);
+                                }}
+                                placeholder="Type a tag and press Enter (or use commas)"
+                                autoComplete="off"
+                              />
+                              {tagsOpen && (canCreateTag || tagSuggestions.length > 0) && (
+                                <div className="position-absolute start-0 end-0 mt-1 bg-white border rounded shadow-sm" style={{ zIndex: 1000 }}>
+                                  <div className="list-group list-group-flush" style={{ maxHeight: 240, overflowY: 'auto' }}>
+                                    {canCreateTag && (
+                                      <button
+                                        type="button"
+                                        className="list-group-item list-group-item-action"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          addTagsFromText(normalizedTagsInput);
+                                          setTagsInput('');
+                                        }}
+                                      >
+                                        Add &quot;{normalizedTagsInput}&quot;
+                                      </button>
+                                    )}
+                                    {tagSuggestions.map((t) => (
+                                      <button
+                                        key={t}
+                                        type="button"
+                                        className="list-group-item list-group-item-action"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          addTagsFromText(t);
+                                          setTagsInput('');
+                                        }}
+                                      >
+                                        {t}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
 
                           {/* Price and Stock */}

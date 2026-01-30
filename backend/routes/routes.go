@@ -131,6 +131,8 @@ func SetupRoutes() http.Handler {
 	router.HandleFunc("/api/products", productController.GetProducts).Methods("GET", "OPTIONS")
 	router.HandleFunc("/api/products", productController.CreateProduct).Methods("POST", "OPTIONS")
 
+	router.HandleFunc("/api/products/tags", productController.GetProductTags).Methods("GET", "OPTIONS")
+
 	// Dev helper: Seed sample products if DB is empty (place BEFORE {id} routes to avoid conflicts)
 	router.HandleFunc("/api/products/seed", productController.SeedProducts).Methods("GET", "OPTIONS")
 
