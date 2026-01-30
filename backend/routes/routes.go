@@ -114,6 +114,11 @@ func SetupRoutes() http.Handler {
 	router.HandleFunc("/api/me/recent-orders", controllers.MeRecentOrders).Methods("GET", "OPTIONS")
 	router.HandleFunc("/api/me/active-order", controllers.MeActiveOrder).Methods("GET", "OPTIONS")
 
+	// Admin Auth
+	router.HandleFunc("/api/admin/login", controllers.AdminLogin).Methods("POST", "OPTIONS")
+	router.Handle("/api/admin/me", controllers.RequireAdmin(http.HandlerFunc(controllers.AdminMe))).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/bootstrap", controllers.AdminBootstrap).Methods("POST", "OPTIONS")
+
 	// Admin API Routes - Orders
 	router.HandleFunc("/api/admin/orders", controllers.AdminGetOrders).Methods("GET")
 	router.HandleFunc("/api/admin/customers/block", controllers.AdminBlockMessengerUser).Methods("POST", "OPTIONS")

@@ -1,7 +1,13 @@
 package controllers
 
 import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,6 +22,7 @@ import (
 	"bakeflow/models"
 
 	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type facebookProfile struct {
@@ -111,18 +118,322 @@ func fetchFacebookProfile(client *http.Client, senderID string) (string, string,
 	return strings.TrimSpace(profile.Name), strings.TrimSpace(profile.Picture.Data.URL), nil
 }
 
-// AdminGetOrders returns all orders for admin dashboard
-func AdminGetOrders(w http.ResponseWriter, r *http.Request) {
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+type adminTokenPayload struct {
+	AdminID int   `json:"admin_id"`
+	Exp     int64 `json:"exp"`
+	Iat     int64 `json:"iat"`
+}
 
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+func getAdminTokenSecret() []byte {
+	secret := strings.TrimSpace(os.Getenv("ADMIN_TOKEN_SECRET"))
+	if secret == "" {
+		return nil
+	}
+	return []byte(secret)
+}
+
+func getAdminTokenTTL() time.Duration {
+	ttl := 24 * time.Hour
+	if s := strings.TrimSpace(os.Getenv("ADMIN_TOKEN_TTL_HOURS")); s != "" {
+		if n, err := strconv.Atoi(s); err == nil {
+			if n > 0 && n <= 720 {
+				ttl = time.Duration(n) * time.Hour
+			}
+		}
+	}
+	return ttl
+}
+
+func generateAdminToken(adminID int, ttl time.Duration) (string, error) {
+	secret := getAdminTokenSecret()
+	if len(secret) == 0 {
+		return "", errors.New("ADMIN_TOKEN_SECRET is not set")
+	}
+	if adminID <= 0 {
+		return "", errors.New("invalid admin id")
+	}
+	if ttl <= 0 {
+		ttl = getAdminTokenTTL()
+	}
+
+	now := time.Now().Unix()
+	payload := adminTokenPayload{AdminID: adminID, Iat: now, Exp: now + int64(ttl.Seconds())}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	payloadB64 := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(payloadB64))
+	sig := mac.Sum(nil)
+	sigB64 := base64.RawURLEncoding.EncodeToString(sig)
+	return payloadB64 + "." + sigB64, nil
+}
+
+func verifyAdminToken(token string) (int, error) {
+	secret := getAdminTokenSecret()
+	if len(secret) == 0 {
+		return 0, errors.New("ADMIN_TOKEN_SECRET is not set")
+	}
+
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return 0, errors.New("invalid token format")
+	}
+	payloadB64 := parts[0]
+	sigB64 := parts[1]
+
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(payloadB64)
+	if err != nil {
+		return 0, errors.New("invalid payload encoding")
+	}
+	providedSig, err := base64.RawURLEncoding.DecodeString(sigB64)
+	if err != nil {
+		return 0, errors.New("invalid signature encoding")
+	}
+
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(payloadB64))
+	expectedSig := mac.Sum(nil)
+	if !hmac.Equal(providedSig, expectedSig) {
+		return 0, errors.New("invalid token signature")
+	}
+
+	var payload adminTokenPayload
+	if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+		return 0, errors.New("invalid payload")
+	}
+	if payload.AdminID <= 0 {
+		return 0, errors.New("missing admin id")
+	}
+	if payload.Exp <= 0 {
+		return 0, errors.New("missing exp")
+	}
+	if time.Now().Unix() > payload.Exp {
+		return 0, errors.New("token expired")
+	}
+
+	return payload.AdminID, nil
+}
+
+func RequireAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := strings.TrimSpace(r.Header.Get("Authorization"))
+		if auth == "" {
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
+			return
+		}
+		parts := strings.SplitN(auth, " ", 2)
+		if len(parts) != 2 || strings.ToLower(strings.TrimSpace(parts[0])) != "bearer" {
+			http.Error(w, "invalid authorization header", http.StatusUnauthorized)
+			return
+		}
+		adminID, err := verifyAdminToken(strings.TrimSpace(parts[1]))
+		if err != nil {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), adminIDContextKey, adminID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func AdminLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Identifier string `json:"identifier"`
+		Password   string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid request"})
 		return
 	}
 
+	identifier := strings.TrimSpace(req.Identifier)
+	password := req.Password
+	if identifier == "" || strings.TrimSpace(password) == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing credentials"})
+		return
+	}
+
+	if configs.DB == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not configured"})
+		return
+	}
+
+	var admin struct {
+		ID           int
+		Username     string
+		Email        string
+		PasswordHash string
+		RoleID       int
+	}
+	err := configs.DB.QueryRow(
+		`SELECT id, username, email, password_hash, role_id FROM admins WHERE username = $1 OR email = $1`,
+		identifier,
+	).Scan(&admin.ID, &admin.Username, &admin.Email, &admin.PasswordHash, &admin.RoleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid credentials"})
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to authenticate"})
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(admin.PasswordHash), []byte(password)) != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid credentials"})
+		return
+	}
+
+	tok, err := generateAdminToken(admin.ID, getAdminTokenTTL())
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "token not configured"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"token":   tok,
+		"admin": map[string]interface{}{
+			"id":       admin.ID,
+			"username": admin.Username,
+			"email":    admin.Email,
+			"role_id":  admin.RoleID,
+		},
+	})
+}
+
+func AdminMe(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	adminID := getAdminIDFromContext(r)
+	if !adminID.Valid {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "unauthorized"})
+		return
+	}
+	if configs.DB == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not configured"})
+		return
+	}
+
+	var out struct {
+		ID       int    `json:"id"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		RoleID   int    `json:"role_id"`
+	}
+	err := configs.DB.QueryRow(
+		`SELECT id, username, email, role_id FROM admins WHERE id = $1`,
+		adminID.Int64,
+	).Scan(&out.ID, &out.Username, &out.Email, &out.RoleID)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "unauthorized"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"admin":   out,
+	})
+}
+
+func AdminBootstrap(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	bootstrapSecret := strings.TrimSpace(os.Getenv("ADMIN_BOOTSTRAP_SECRET"))
+	if bootstrapSecret == "" {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "not found"})
+		return
+	}
+	if strings.TrimSpace(r.Header.Get("X-Admin-Bootstrap-Secret")) != bootstrapSecret {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "forbidden"})
+		return
+	}
+	if configs.DB == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "database not configured"})
+		return
+	}
+
+	var existing int
+	if err := configs.DB.QueryRow(`SELECT COUNT(*) FROM admins`).Scan(&existing); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to check admins"})
+		return
+	}
+	if existing > 0 {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "admin already exists"})
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid request"})
+		return
+	}
+
+	username := strings.TrimSpace(req.Username)
+	email := strings.TrimSpace(req.Email)
+	password := req.Password
+	if username == "" || email == "" || strings.TrimSpace(password) == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "missing fields"})
+		return
+	}
+
+	roleID := 1
+	_ = configs.DB.QueryRow(`SELECT id FROM admin_roles WHERE name = 'owner'`).Scan(&roleID)
+
+	hashBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to set password"})
+		return
+	}
+
+	var adminID int
+	err = configs.DB.QueryRow(
+		`INSERT INTO admins (username, email, password_hash, role_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+		username,
+		email,
+		string(hashBytes),
+		roleID,
+	).Scan(&adminID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{"error": "failed to create admin"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"admin_id": adminID,
+	})
+}
+
+// AdminGetOrders returns all orders for admin dashboard
+func AdminGetOrders(w http.ResponseWriter, r *http.Request) {
 	// Set JSON header before any response
 	w.Header().Set("Content-Type", "application/json")
 
@@ -234,15 +545,6 @@ func AdminGetOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminBlockMessengerUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	var req struct {
 		PSID   string   `json:"psid"`
 		Phones []string `json:"phones"`
@@ -307,15 +609,6 @@ func AdminBlockMessengerUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminUnblockMessengerUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	var req struct {
 		PSID   string `json:"psid"`
 		Reason string `json:"reason"`
@@ -352,15 +645,6 @@ func AdminUnblockMessengerUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminGetCustomerStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	psid := strings.TrimSpace(r.URL.Query().Get("psid"))
 	if psid == "" {
 		http.Error(w, "Missing Messenger user ID", http.StatusBadRequest)
@@ -395,10 +679,6 @@ func AdminGetCustomerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminSetCustomerVerification(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -450,10 +730,6 @@ func AdminSetCustomerVerification(w http.ResponseWriter, r *http.Request) {
 }
 
 func AdminRequestMessengerVerification(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -514,11 +790,6 @@ func AdminRequestMessengerVerification(w http.ResponseWriter, r *http.Request) {
 
 // AdminUpdateOrderStatus updates the status of an order
 func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "PUT, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return
@@ -745,11 +1016,6 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 
 // AdminCancelOrder cancels an order and notifies the customer via Messenger
 func AdminCancelOrder(w http.ResponseWriter, r *http.Request) {
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
 		return

@@ -12,6 +12,19 @@ export default function PromotionsPage() {
     const { protocol, hostname } = window.location;
     return `${protocol}//${hostname}:8080`;
   })();
+
+  const buildAuthHeaders = useCallback((extra = {}) => {
+    if (typeof window === 'undefined') return { ...extra };
+    let tok = '';
+    try {
+      tok = localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      tok = '';
+    }
+    const headers = { ...extra };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return headers;
+  }, []);
   const [promotions, setPromotions] = useState([]);
   const [products, setProducts] = useState([]);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -92,7 +105,9 @@ export default function PromotionsPage() {
   const fetchPromotions = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/api/admin/promotions`);
+      const res = await fetch(`${API_BASE}/api/admin/promotions`, {
+        headers: buildAuthHeaders(),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
       setPromotions(data.promotions || []);
@@ -103,7 +118,7 @@ export default function PromotionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE]);
+  }, [API_BASE, buildAuthHeaders]);
 
   useEffect(() => {
     fetchProducts();
@@ -219,7 +234,7 @@ export default function PromotionsPage() {
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...formData,
           type: payloadType,
@@ -326,7 +341,10 @@ export default function PromotionsPage() {
     if (!deleteTarget?.id) return;
     setDeleteLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/promotions/${deleteTarget.id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/api/admin/promotions/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: buildAuthHeaders(),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
       if (data.success) {
@@ -348,8 +366,8 @@ export default function PromotionsPage() {
     try {
       const res = await fetch(`${API_BASE}/api/admin/promotions/${id}/toggle`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: !currentActive })
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ active: !currentActive }),
       });
 
       if (!res.ok) throw new Error(`API error ${res.status}`);

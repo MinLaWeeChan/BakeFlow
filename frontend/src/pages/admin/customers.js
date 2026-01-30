@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import Sidebar from '../../components/Sidebar';
@@ -14,6 +15,7 @@ const storeAverages = {
 };
 
 export default function AdminCustomerPage() {
+  const router = useRouter();
   const { t } = useTranslation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [orders, setOrders] = useState([]);
@@ -50,6 +52,19 @@ export default function AdminCustomerPage() {
   const [blockReason, setBlockReason] = useState('');
   const [verificationReason, setVerificationReason] = useState('');
 
+  const buildAuthHeaders = useCallback((extra = {}) => {
+    if (typeof window === 'undefined') return { ...extra };
+    let tok = '';
+    try {
+      tok = localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      tok = '';
+    }
+    const headers = { ...extra };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return headers;
+  }, []);
+
   const API_BASE = (() => {
     const fromEnv = process.env.NEXT_PUBLIC_API_BASE;
     if (fromEnv) return fromEnv;
@@ -57,6 +72,20 @@ export default function AdminCustomerPage() {
     const { protocol, hostname } = window.location;
     return `${protocol}//${hostname}:8080`;
   })();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let tok = '';
+    try {
+      tok = localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      tok = '';
+    }
+    if (!tok) {
+      const target = router.asPath || '/admin/customers';
+      router.replace(`/admin/login?redirect=${encodeURIComponent(target)}`);
+    }
+  }, [router]);
 
   const parseResponse = async res => {
     let data = null;
@@ -80,7 +109,9 @@ export default function AdminCustomerPage() {
     try {
       setStatusError('');
       setStatusLoading(true);
-      const res = await fetch(`${API_BASE}/api/admin/customers/status?psid=${encodeURIComponent(psid)}`);
+      const res = await fetch(`${API_BASE}/api/admin/customers/status?psid=${encodeURIComponent(psid)}`, {
+        headers: buildAuthHeaders(),
+      });
       const data = await parseResponse(res);
       setCustomerStatus({
         blocked: Boolean(data?.blocked),
@@ -99,7 +130,7 @@ export default function AdminCustomerPage() {
     } finally {
       setStatusLoading(false);
     }
-  }, [API_BASE, emptyStatus]);
+  }, [API_BASE, emptyStatus, buildAuthHeaders]);
 
   const performAdminAction = useCallback(async (psid, path, payload) => {
     if (!psid) return null;
@@ -108,7 +139,7 @@ export default function AdminCustomerPage() {
       setActionLoading(true);
       const res = await fetch(`${API_BASE}${path}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
       const data = await parseResponse(res);
@@ -120,7 +151,7 @@ export default function AdminCustomerPage() {
     } finally {
       setActionLoading(false);
     }
-  }, [API_BASE, loadCustomerStatus]);
+  }, [API_BASE, loadCustomerStatus, buildAuthHeaders]);
 
   useEffect(() => {
     let active = true;
@@ -129,7 +160,9 @@ export default function AdminCustomerPage() {
         setError(null);
         setLoading(true);
         const [ordersRes] = await Promise.all([
-          fetch(`${API_BASE}/api/admin/orders?include_fb_profile=1`)
+          fetch(`${API_BASE}/api/admin/orders?include_fb_profile=1`, {
+            headers: buildAuthHeaders(),
+          })
         ]);
         const ordersJson = await ordersRes.json();
         if (!active) return;
@@ -148,7 +181,7 @@ export default function AdminCustomerPage() {
     return () => {
       active = false;
     };
-  }, [API_BASE]);
+  }, [API_BASE, buildAuthHeaders]);
 
 
   const normalizedOrders = useMemo(() => {

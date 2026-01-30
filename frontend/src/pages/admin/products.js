@@ -20,6 +20,22 @@ export default function ProductsPage() {
   const { notifications, unreadCount, hasUnread, markAsRead, markAllRead, clearAll } = useNotifications();
   const { t } = useTranslation();
 
+  const getAdminToken = () => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const buildAuthHeaders = (extra = {}) => {
+    const tok = getAdminToken();
+    const headers = { ...extra };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return headers;
+  };
+
   const fetchStockStatus = useCallback(async (productIds) => {
     if (!productIds.length) {
       setStockStatus({});
@@ -29,7 +45,7 @@ export default function ProductsPage() {
       const res = await fetch(`${API_BASE}/api/stock/bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_ids: productIds })
+        body: JSON.stringify({ product_ids: productIds }),
       });
       if (!res.ok) throw new Error(`Stock API error ${res.status}`);
       const data = await res.json();
@@ -76,7 +92,10 @@ export default function ProductsPage() {
   const deleteProduct = async (id) => {
     if (!confirm('Are you sure you want to archive this product?')) return;
     try {
-      const res = await fetch(`${API_BASE}/api/products/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/api/products/${id}`, {
+        method: 'DELETE',
+        headers: buildAuthHeaders(),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
       if (data.success) { showNotification('Product archived successfully', 'success'); fetchProducts(); }
@@ -89,7 +108,9 @@ export default function ProductsPage() {
   const updateStatus = async (id, newStatus) => {
     try {
       const res = await fetch(`${API_BASE}/api/products/${id}/status`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: newStatus })
+        method: 'PATCH',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
@@ -104,8 +125,8 @@ export default function ProductsPage() {
     try {
       const res = await fetch(`${API_BASE}/api/products/${id}/stock`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adjustment })
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ adjustment }),
       });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();

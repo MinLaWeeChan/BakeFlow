@@ -253,7 +253,6 @@ func GetOrderRatingStatus(w http.ResponseWriter, r *http.Request) {
 // GET /api/admin/ratings
 func AdminGetAllRatings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "http://localhost:3000")
 
 	summaries, err := models.GetAllProductRatings()
 	if err != nil {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Sidebar from '../../components/Sidebar';
 import TopNavbar from '../../components/TopNavbar';
@@ -12,6 +13,22 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import { useNotifications } from '../../contexts/NotificationContext';
 
 export default function AdminDashboard() {
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+  const router = useRouter();
+
+  const buildAuthHeaders = useCallback((extra = {}) => {
+    if (typeof window === 'undefined') return { ...extra };
+    let tok = '';
+    try {
+      tok = localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      tok = '';
+    }
+    const headers = { ...extra };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return headers;
+  }, []);
+
   const { t } = useTranslation();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +39,20 @@ export default function AdminDashboard() {
   const seenOrdersRef = useRef(new Set());
   const initializedRef = useRef(false);
 
-  // Load seen orders from localStorage on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let tok = '';
+    try {
+      tok = localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      tok = '';
+    }
+    if (!tok) {
+      const target = router.asPath || '/admin';
+      router.replace(`/admin/login?redirect=${encodeURIComponent(target)}`);
+    }
+  }, [router]);
+
   useEffect(() => {
     const stored = localStorage.getItem('bakeflow_seen_orders');
     if (stored) {
@@ -46,7 +76,9 @@ export default function AdminDashboard() {
   const fetchOrders = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetch('http://localhost:8080/api/admin/orders');
+      const res = await fetch(`${API_BASE}/api/admin/orders`, {
+        headers: buildAuthHeaders(),
+      });
       const data = await res.json();
       if (data.error) {
         setError(data.details || data.error);
@@ -96,7 +128,7 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [addNotifications, updateSeenOrders]);
+  }, [API_BASE, addNotifications, updateSeenOrders, buildAuthHeaders]);
 
   useEffect(() => {
     fetchOrders();

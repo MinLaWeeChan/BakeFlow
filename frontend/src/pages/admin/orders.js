@@ -12,6 +12,20 @@ import { useNotifications } from '../../contexts/NotificationContext';
 import { useTranslation } from '../../utils/i18n';
 
 export default function OrdersPage() {
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+
+  const buildAuthHeaders = useCallback((extra = {}) => {
+    if (typeof window === 'undefined') return { ...extra };
+    let tok = '';
+    try {
+      tok = localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      tok = '';
+    }
+    const headers = { ...extra };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return headers;
+  }, []);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -84,7 +98,9 @@ export default function OrdersPage() {
   const fetchOrders = useCallback(async () => {
     try {
       setError(null);
-      const res = await fetch('http://localhost:8080/api/admin/orders');
+      const res = await fetch(`${API_BASE}/api/admin/orders`, {
+        headers: buildAuthHeaders(),
+      });
       const data = await res.json();
       if (data.error) {
         setError(data.details || data.error);
@@ -148,7 +164,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [addNotifications, updateSeenOrders, buildOrderNotification, getOrderItems, getOrderTotalItems]);
+  }, [API_BASE, addNotifications, updateSeenOrders, buildOrderNotification, getOrderItems, getOrderTotalItems, buildAuthHeaders]);
 
   useEffect(() => {
     fetchOrders();
@@ -167,9 +183,9 @@ export default function OrdersPage() {
     setUpdating(orderId);
 
     try {
-      const res = await fetch(`http://localhost:8080/api/admin/orders/${orderId}/status`, {
+      const res = await fetch(`${API_BASE}/api/admin/orders/${orderId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ status: newStatus })
       });
       const data = await res.json().catch(() => ({}));
@@ -214,9 +230,9 @@ export default function OrdersPage() {
     setCancelling(orderId);
 
     try {
-      const res = await fetch(`http://localhost:8080/api/admin/orders/${orderId}/cancel`, {
+      const res = await fetch(`${API_BASE}/api/admin/orders/${orderId}/cancel`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ reason })
       });
       const data = await res.json().catch(() => ({}));

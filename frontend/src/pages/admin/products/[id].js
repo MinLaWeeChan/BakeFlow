@@ -40,6 +40,22 @@ export default function ProductFormPage() {
 
   const [errors, setErrors] = useState({});
 
+  const getAdminToken = () => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const buildAuthHeaders = (extra = {}) => {
+    const tok = getAdminToken();
+    const headers = { ...extra };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return headers;
+  };
+
   const showNotification = useCallback((message, type) => {
     setNotification({ show: true, message, type });
     setTimeout(() => setNotification({ show: false, message: '', type: '' }), 5000);
@@ -197,7 +213,7 @@ export default function ProductFormPage() {
       
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...form,
           image_url: imageUrl,

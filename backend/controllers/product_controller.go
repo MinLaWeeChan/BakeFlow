@@ -14,6 +14,10 @@ import (
 	"github.com/gorilla/mux"
 )
 
+type contextKey string
+
+const adminIDContextKey contextKey = "admin_id"
+
 type ProductController struct {
 	DB *sql.DB
 }
@@ -883,9 +887,23 @@ func (pc *ProductController) DebugProducts(w http.ResponseWriter, r *http.Reques
 
 // Helper function to get admin ID from request context
 func getAdminIDFromContext(r *http.Request) sql.NullInt64 {
-	// TODO: Implement based on your authentication system
-	// For now, return null
-	return sql.NullInt64{Valid: false}
+	v := r.Context().Value(adminIDContextKey)
+	switch t := v.(type) {
+	case int:
+		if t <= 0 {
+			return sql.NullInt64{Valid: false}
+		}
+		return sql.NullInt64{Int64: int64(t), Valid: true}
+	case int64:
+		if t <= 0 {
+			return sql.NullInt64{Valid: false}
+		}
+		return sql.NullInt64{Int64: t, Valid: true}
+	case sql.NullInt64:
+		return t
+	default:
+		return sql.NullInt64{Valid: false}
+	}
 }
 
 // Helper functions for JSON responses

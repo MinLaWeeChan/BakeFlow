@@ -27,6 +27,22 @@ export default function NewProductPage() {
   const [message, setMessage] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  const getAdminToken = () => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return localStorage.getItem('bakeflow_admin_token') || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const buildAuthHeaders = (extra = {}) => {
+    const tok = getAdminToken();
+    const headers = { ...extra };
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+    return headers;
+  };
+
   const normalizeTag = (value) => {
     const v = String(value || '').trim().toLowerCase();
     if (!v) return '';
@@ -110,7 +126,7 @@ export default function NewProductPage() {
         const form = new FormData();
         form.append('file', file);
         form.append('folder', 'bakeflow/products');
-        const res = await fetch(`${API_BASE}/api/uploads/cloudinary`, { method: 'POST', body: form });
+        const up = await fetch(`${API_BASE}/api/uploads/cloudinary`, { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || 'Upload failed');
         imageUrl = data.url;
@@ -129,7 +145,7 @@ export default function NewProductPage() {
       ).slice(0, 20);
       const res = await fetch(`${API_BASE}/api/products`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           name,
           description,
