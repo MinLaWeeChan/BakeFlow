@@ -46,6 +46,294 @@ type ChatOrderResponse struct {
 	Message string `json:"message"`
 }
 
+type OrderChoiceRequest struct {
+	UserID       string          `json:"user_id"`
+	Choice       string          `json:"choice"`   // "add_to_existing" or "new_order"
+	OrderID      int             `json:"order_id"` // for add_to_existing choice
+	Items        []ChatOrderItem `json:"items"`
+	CustomerName string          `json:"customer_name"`
+	DeliveryType string          `json:"delivery_type"`
+	Address      string          `json:"address"`
+}
+
+// HandleOrderChoice processes the user's decision to add to existing or create new order
+func HandleOrderChoice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "only POST allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Verify webview token
+	tok := strings.TrimSpace(r.URL.Query().Get("t"))
+	if tok == "" {
+		http.Error(w, "missing auth token", http.StatusUnauthorized)
+		return
+	}
+	psid, errTok := VerifyWebviewToken(tok)
+	if errTok != nil {
+		http.Error(w, "invalid auth token", http.StatusUnauthorized)
+		return
+	}
+
+	var req OrderChoiceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Use the verified user ID from token, not from request body
+	userID := psid
+
+	choice := strings.ToLower(strings.TrimSpace(req.Choice))
+
+	if choice == "add_to_existing" {
+		// Add items to existing order with smart merging
+		addItemsToExistingOrder(w, userID, req.OrderID, req.Items)
+	} else if choice == "new_order" {
+		// Create a new order (treat as a fresh order)
+		createNewOrderAfterChoice(w, userID, req)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "invalid_choice",
+			"message": "Choice must be 'add_to_existing' or 'new_order'",
+		})
+	}
+}
+
+// addItemsToExistingOrder adds items to existing order, merging duplicate products
+func addItemsToExistingOrder(w http.ResponseWriter, userID string, orderID int, newItems []ChatOrderItem) {
+	// Get the existing order
+	existingOrder, err := models.GetOrderByID(orderID)
+	if err != nil || existingOrder == nil {
+		http.Error(w, "order not found", http.StatusNotFound)
+		return
+	}
+
+	var totalNewItems int
+	var totalNewSubtotal float64
+
+	// Get existing items
+	existingItems, err := models.GetOrderItems(orderID)
+	if err != nil {
+		http.Error(w, "failed to fetch order items", http.StatusInternalServerError)
+		return
+	}
+
+	// Create a map of product names to existing item IDs for easy lookup
+	productItemMap := make(map[string]int)     // product_name -> item_id
+	productQuantityMap := make(map[string]int) // product_name -> current quantity
+
+	for _, item := range existingItems {
+		productItemMap[item.Product] = item.ID
+		productQuantityMap[item.Product] = item.Quantity
+	}
+
+	// Process new items - merge or insert
+	for _, newItem := range newItems {
+		if existingItemID, exists := productItemMap[newItem.Name]; exists {
+			// Product already exists in order - increase its quantity
+			currentQty := productQuantityMap[newItem.Name]
+			newQty := currentQty + newItem.Qty
+
+			_, err = configs.DB.Exec(`
+				UPDATE order_items
+				SET quantity = $1
+				WHERE id = $2
+			`, newQty, existingItemID)
+
+			if err != nil {
+				log.Printf("⚠️  Failed to update item %s: %v", newItem.Name, err)
+			} else {
+				log.Printf("✅ Updated quantity for '%s': %d → %d", newItem.Name, currentQty, newQty)
+			}
+
+			totalNewItems += newItem.Qty
+			totalNewSubtotal += newItem.Price * float64(newItem.Qty)
+		} else {
+			// New product - insert as new item
+			_, err = configs.DB.Exec(`
+				INSERT INTO order_items (order_id, product, quantity, price, note, image_url, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, NOW())
+			`, orderID, newItem.Name, newItem.Qty, newItem.Price, newItem.Note, newItem.ImageURL)
+
+			if err != nil {
+				log.Printf("⚠️  Failed to insert item %s: %v", newItem.Name, err)
+			} else {
+				log.Printf("✅ Inserted new item '%s' (qty: %d)", newItem.Name, newItem.Qty)
+			}
+
+			totalNewItems += newItem.Qty
+			totalNewSubtotal += newItem.Price * float64(newItem.Qty)
+
+			// Handle stock reservation if product has ID
+			if newItem.ProductID > 0 {
+				if err := models.AtomicPurchase(newItem.ProductID, newItem.Qty, orderID); err != nil {
+					log.Printf("⚠️ Atomic purchase failed for product %d: %v", newItem.ProductID, err)
+				}
+			}
+		}
+	}
+
+	// Update order totals
+	_, _ = configs.DB.Exec(`
+		UPDATE orders
+		SET total_items = total_items + $1,
+		    subtotal = subtotal + $2,
+		    total_amount = total_amount + $3
+		WHERE id = $4
+	`, totalNewItems, totalNewSubtotal, totalNewSubtotal, orderID)
+
+	_ = models.UpsertCustomerPhone(userID, "")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"orderID": orderID,
+		"message": fmt.Sprintf("✅ Added %d items to your order #BF-%d", totalNewItems, orderID),
+		"action":  "items_merged",
+	})
+
+	// Send Messenger notification
+	go func() {
+		defer func() { _ = recover() }()
+		if !isValidMessengerRecipientID(userID) {
+			return
+		}
+
+		// Fetch updated order for notification
+		updatedOrder, _ := models.GetOrderByID(orderID)
+		if updatedOrder == nil {
+			return
+		}
+
+		itemSummary := "Items added"
+		if len(newItems) > 0 {
+			first := newItems[0]
+			itemSummary = fmt.Sprintf("%s × %d", first.Name, first.Qty)
+			if len(newItems) > 1 {
+				itemSummary = fmt.Sprintf("%s + %d more", itemSummary, len(newItems)-1)
+			}
+		}
+
+		productImage := "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=200&fit=crop"
+		if len(newItems) > 0 && strings.TrimSpace(newItems[0].ImageURL) != "" {
+			imgURL := strings.TrimSpace(newItems[0].ImageURL)
+			if strings.HasPrefix(imgURL, "https://") {
+				productImage = imgURL
+			}
+		}
+
+		title := "Items Added & Merged"
+		subtitle := fmt.Sprintf("Order #BF-%d • %s • Total: $%.2f", updatedOrder.ID, itemSummary, updatedOrder.TotalAmount)
+		buttons := []Button{
+			{Type: "postback", Title: "Track Order", Payload: fmt.Sprintf("TRACK_ORDER_%d", updatedOrder.ID)},
+			{Type: "postback", Title: "View Cart", Payload: fmt.Sprintf("VIEW_CART_%d", updatedOrder.ID)},
+		}
+		_ = SendOrderCardWithTag(userID, updatedOrder.ID, title, subtitle, productImage, buttons, "POST_PURCHASE_UPDATE")
+	}()
+}
+
+// createNewOrderAfterChoice creates a completely new order
+func createNewOrderAfterChoice(w http.ResponseWriter, userID string, req OrderChoiceRequest) {
+	var orderID int
+
+	// Calculate totals
+	var subtotal float64
+	totalItems := 0
+	for _, item := range req.Items {
+		subtotal += item.Price * float64(item.Qty)
+		totalItems += item.Qty
+	}
+
+	customerInfo := strings.TrimSpace(req.CustomerName)
+	if customerInfo == "" {
+		customerInfo = "Customer"
+	}
+
+	status := "pending"
+
+	// Insert new order
+	insertQuery := `
+		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, $6, $7, NOW())
+		RETURNING id
+	`
+
+	err := configs.DB.QueryRow(insertQuery, customerInfo, req.DeliveryType, req.Address, status, totalItems, subtotal, userID).Scan(&orderID)
+	if err != nil {
+		log.Printf("❌ Failed to create new order: %v", err)
+		http.Error(w, "failed to create order", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("📦 New order #%d created", orderID)
+
+	// Insert order items
+	for _, item := range req.Items {
+		_, err = configs.DB.Exec(`
+			INSERT INTO order_items (order_id, product, quantity, price, note, image_url, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		`, orderID, item.Name, item.Qty, item.Price, item.Note, item.ImageURL)
+
+		if err != nil {
+			log.Printf("⚠️  Failed to insert item %s: %v", item.Name, err)
+		}
+
+		// Handle stock reservation
+		if item.ProductID > 0 {
+			if err := models.AtomicPurchase(item.ProductID, item.Qty, orderID); err != nil {
+				log.Printf("⚠️ Atomic purchase failed for product %d: %v", item.ProductID, err)
+			}
+		}
+	}
+
+	_ = models.UpsertCustomerPhone(userID, "")
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"orderID": orderID,
+		"message": fmt.Sprintf("✅ New order #BF-%d created with %d items", orderID, totalItems),
+		"action":  "new_order_created",
+	})
+
+	// Send Messenger notification
+	go func() {
+		defer func() { _ = recover() }()
+		if !isValidMessengerRecipientID(userID) {
+			return
+		}
+
+		itemSummary := "Order placed"
+		if len(req.Items) > 0 {
+			first := req.Items[0]
+			itemSummary = fmt.Sprintf("%s × %d", first.Name, first.Qty)
+			if len(req.Items) > 1 {
+				itemSummary = fmt.Sprintf("%s + %d more", itemSummary, len(req.Items)-1)
+			}
+		}
+
+		productImage := "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=200&fit=crop"
+		if len(req.Items) > 0 && strings.TrimSpace(req.Items[0].ImageURL) != "" {
+			imgURL := strings.TrimSpace(req.Items[0].ImageURL)
+			if strings.HasPrefix(imgURL, "https://") {
+				productImage = imgURL
+			}
+		}
+
+		title := "New Order Placed"
+		subtitle := fmt.Sprintf("Order #BF-%d • %s • Total: $%.2f", orderID, itemSummary, subtotal)
+		buttons := []Button{
+			{Type: "postback", Title: "Track Order", Payload: fmt.Sprintf("TRACK_ORDER_%d", orderID)},
+			{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
+		}
+		_ = SendOrderCardWithTag(userID, orderID, title, subtitle, productImage, buttons, "POST_PURCHASE_UPDATE")
+	}()
+}
+
 // CreateChatOrder handles orders from the mini webview
 func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	var req ChatOrderRequest
@@ -199,8 +487,62 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	activeStatuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
-	existingOrder, _ := models.GetLatestOrderBySenderIDAndStatuses(userID, activeStatuses)
-	if existingOrder == nil && req.CustomerPhone != "" {
+	existingOrders, _ := models.GetAllOrdersBySenderIDAndStatuses(userID, activeStatuses)
+	log.Printf("🔍 [OrderChoice] Checking for existing orders. UserID: %s, Found: %d orders", userID, len(existingOrders))
+
+	// Filter out delivered/cancelled orders and check if any are available for adding items
+	var availableOrders []*models.Order
+	if len(existingOrders) > 0 {
+		for _, order := range existingOrders {
+			status := strings.ToLower(strings.TrimSpace(order.Status))
+			allowAdd := status != "delivered" && status != "cancelled"
+			if allowAdd {
+				availableOrders = append(availableOrders, order)
+				log.Printf("🔍 [OrderChoice] Available order found: #%d, Status: %s, Items: %d", order.ID, order.Status, order.TotalItems)
+			} else {
+				log.Printf("🔍 [OrderChoice] Skipping order #%d with status: %s (not available for adding)", order.ID, order.Status)
+			}
+		}
+	}
+
+	log.Printf("🔍 [OrderChoice] Total available orders after filtering: %d", len(availableOrders))
+
+	if len(availableOrders) > 0 { // Build summary of available orders
+		type OrderSummary struct {
+			ID      int     `json:"id"`
+			Status  string  `json:"status"`
+			Items   int     `json:"items"`
+			Amount  float64 `json:"amount"`
+			Summary string  `json:"summary"`
+		}
+
+		var orderSummaries []OrderSummary
+		for _, order := range availableOrders {
+			summary := OrderSummary{
+				ID:      order.ID,
+				Status:  order.Status,
+				Items:   order.TotalItems,
+				Amount:  order.TotalAmount,
+				Summary: fmt.Sprintf("Order #BF-%d (%s) • %d items • $%.2f", order.ID, order.Status, order.TotalItems, order.TotalAmount),
+			}
+			orderSummaries = append(orderSummaries, summary)
+		}
+
+		// Return choice with all available orders
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":  true,
+			"action":   "ask_user_choice",
+			"message":  "You have active orders. Which one would you like to add items to?",
+			"orders":   orderSummaries,
+			"newItems": req.Items,
+		})
+		return
+	}
+
+	// Check for orders by phone if no user orders found
+	if len(existingOrders) == 0 && req.CustomerPhone != "" {
 		phoneOrder, _ := models.GetLatestOrderByPhoneAndStatuses(req.CustomerPhone, activeStatuses)
 		if phoneOrder != nil {
 			status := strings.ToLower(strings.TrimSpace(phoneOrder.Status))
@@ -215,121 +557,6 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
-	}
-	if existingOrder != nil {
-		status := strings.ToLower(strings.TrimSpace(existingOrder.Status))
-		allowAdd := status == "pending" || status == "confirmed"
-		if !allowAdd {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "order_locked",
-				"message": "Your order is already being prepared and can’t be modified. Please place a new order for additional items.",
-				"status":  status,
-				"order":   existingOrder.ID,
-			})
-			return
-		}
-		{
-			newCustomerName := strings.TrimSpace(req.CustomerName)
-			newCustomerInfo := newCustomerName
-			if newCustomerInfo == "" {
-				newCustomerInfo = existingOrder.CustomerName
-			} else if req.CustomerPhone != "" {
-				newCustomerInfo += " (" + req.CustomerPhone + ")"
-			}
-
-			newDeliveryType := strings.ToLower(strings.TrimSpace(req.DeliveryType))
-			if newDeliveryType == "" {
-				newDeliveryType = existingOrder.DeliveryType
-			}
-
-			newAddress := strings.TrimSpace(req.Address)
-			if newDeliveryType != "delivery" {
-				newAddress = "Pickup at store"
-			}
-			if newAddress == "" {
-				newAddress = existingOrder.Address
-			}
-
-			_, _ = configs.DB.Exec(`
-				UPDATE orders
-				SET customer_name = $1,
-				    delivery_type = $2,
-				    address = $3
-				WHERE id = $4
-			`, newCustomerInfo, newDeliveryType, newAddress, existingOrder.ID)
-		}
-
-		var addedItems int
-		for _, item := range req.Items {
-			addedItems += item.Qty
-		}
-		addedSubtotal := subtotal
-		addedTotal := subtotal
-		for _, item := range req.Items {
-			_, err = configs.DB.Exec(`
-				INSERT INTO order_items (order_id, product, quantity, price, note, image_url, created_at)
-				VALUES ($1, $2, $3, $4, $5, $6, NOW())
-			`, existingOrder.ID, item.Name, item.Qty, item.Price, item.Note, item.ImageURL)
-			if err != nil {
-				log.Printf("⚠️  Failed to insert item %s: %v", item.Name, err)
-			}
-			if item.ProductID > 0 {
-				if err := models.AtomicPurchase(item.ProductID, item.Qty, existingOrder.ID); err != nil {
-					log.Printf("⚠️ Atomic purchase failed for product %d: %v", item.ProductID, err)
-				}
-			}
-		}
-		_, _ = configs.DB.Exec(`
-			UPDATE orders
-			SET total_items = total_items + $1,
-			    subtotal = subtotal + $2,
-			    total_amount = total_amount + $3
-			WHERE id = $4
-		`, addedItems, addedSubtotal, addedTotal, existingOrder.ID)
-		_ = models.UpsertCustomerPhone(userID, req.CustomerPhone)
-
-		resp := ChatOrderResponse{
-			Success: true,
-			OrderID: existingOrder.ID,
-			Message: "Items added to your existing order",
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-
-		go func() {
-			defer func() { _ = recover() }()
-			if !isValidMessengerRecipientID(userID) {
-				return
-			}
-			productImage := "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=200&fit=crop"
-			if len(req.Items) > 0 && strings.TrimSpace(req.Items[0].ImageURL) != "" {
-				imgURL := strings.TrimSpace(req.Items[0].ImageURL)
-				if strings.HasPrefix(imgURL, "https://") {
-					productImage = imgURL
-				}
-			}
-			itemSummary := "Items added"
-			if len(req.Items) > 0 {
-				first := req.Items[0]
-				itemSummary = fmt.Sprintf("%s × %d", first.Name, first.Qty)
-				if len(req.Items) > 1 {
-					itemSummary = fmt.Sprintf("%s + %d more", itemSummary, len(req.Items)-1)
-				}
-			}
-			newTotal := existingOrder.TotalAmount + addedTotal
-			totalLabel := fmt.Sprintf("New total: $%.2f", newTotal)
-			subtitle := fmt.Sprintf("Order #BF-%d • %s • %s", existingOrder.ID, itemSummary, totalLabel)
-			title := "Items Added"
-			buttons := []Button{
-				{Type: "postback", Title: "Track Order", Payload: fmt.Sprintf("TRACK_ORDER_%d", existingOrder.ID)},
-				{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
-			}
-			_ = SendOrderCardWithTag(userID, existingOrder.ID, title, subtitle, productImage, buttons, "POST_PURCHASE_UPDATE")
-		}()
-		return
 	}
 
 	limited, retryAfter, err := checkOrderRateLimit(userID)

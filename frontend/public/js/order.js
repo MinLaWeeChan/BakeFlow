@@ -35,25 +35,14 @@ function setEditLock(isLocked) {
 
 function applyActiveOrder(order) {
     const banner = document.getElementById('activeOrderBanner');
-    const titleEl = document.getElementById('activeOrderTitle');
-    const textEl = document.getElementById('activeOrderText');
-    if (!banner || !titleEl || !textEl) return;
+    if (!banner) return;
+    // Hide the banner - we now use the choice dialog instead
+    banner.style.display = 'none';
+
     if (!order || !order.id) {
-        banner.style.display = 'none';
         setEditLock(false);
         return;
     }
-
-    const status = String(order.status || '').toLowerCase();
-    const statusLabel = status ? status.toUpperCase() : 'ACTIVE';
-    if (activeOrderEditable) {
-        titleEl.textContent = `Editing order #${order.id}`;
-        textEl.textContent = `Changes will update this order (${statusLabel}).`;
-    } else {
-        titleEl.textContent = `Order #${order.id} locked`;
-        textEl.textContent = `Order is ${statusLabel}. Details are locked, but you can still add items.`;
-    }
-    banner.style.display = 'block';
 
     const { name, phone } = splitNamePhone(order.customer_name);
     const nameEl = document.getElementById('customerName');
@@ -338,6 +327,17 @@ function processOrderSubmission(name, phone, address, notes, deliveryType, userI
         return { res, data };
     })
     .then(({ res, data }) => {
+        console.log('📥 Response data:', JSON.stringify(data, null, 2));
+        console.log('📥 data.action:', data?.action);
+        
+        // Check for order choice request FIRST (before success check)
+        if (data && data.action === 'ask_user_choice') {
+            console.log('✅ Showing choice dialog!');
+            showOrderChoiceDialog(data, orderData, name, phone);
+            resetSubmitButton();
+            return;
+        }
+        
         if (res.ok && data && data.success) {
             try {
                 const userKey = `recent_orders_${getUserId()}`;
@@ -477,3 +477,270 @@ function resetOrder() {
 window.submitOrder = submitOrder;
 window.validateCartStock = validateCartStock;
 window.loadActiveOrder = loadActiveOrder;
+// ========== Order Choice Dialog ==========
+function showOrderChoiceDialog(choiceData, orderData, name, phone) {
+    console.log('🎨 Creating choice dialog');
+    
+    // Remove any existing dialog first
+    const existing = document.getElementById('orderChoiceDialog');
+    if (existing) {
+        existing.remove();
+    }
+    
+    // Create a modal dialog
+    const dialog = document.createElement('div');
+    dialog.id = 'orderChoiceDialog';
+    dialog.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        animation: fadeIn 0.2s ease-out;
+    `;
+    
+    // Add animations if not already in document
+    if (!document.getElementById('orderChoiceAnimations')) {
+        const style = document.createElement('style');
+        style.id = 'orderChoiceAnimations';
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes slideUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        border-radius: 12px;
+        padding: 40px;
+        max-width: 480px;
+        width: 90%;
+        box-shadow: 0 10px 50px rgba(0,0,0,0.25);
+        text-align: center;
+        animation: slideUp 0.3s ease-out;
+    `;
+    
+    const title = document.createElement('h2');
+    title.textContent = 'Active Orders';
+    title.style.cssText = `
+        margin: 0 0 12px 0;
+        font-size: 22px;
+        font-weight: 700;
+        color: #1a1a1a;
+        letter-spacing: -0.5px;
+    `;
+    
+    const msg = document.createElement('p');
+    const orderCount = choiceData.orders ? choiceData.orders.length : 1;
+    msg.textContent = `You have ${orderCount} active ${orderCount === 1 ? 'order' : 'orders'}. Which would you like to add items to?`;
+    msg.style.cssText = `
+        margin: 0 0 24px 0;
+        font-size: 15px;
+        color: #555;
+        line-height: 1.6;
+    `;
+    
+    // Create order selection list
+    const orderList = document.createElement('div');
+    orderList.style.cssText = `
+        background: #f9f9f9;
+        border-radius: 8px;
+        margin-bottom: 24px;
+        max-height: 300px;
+        overflow-y: auto;
+    `;
+    
+    if (choiceData.orders && choiceData.orders.length > 0) {
+        choiceData.orders.forEach(order => {
+            const orderItem = document.createElement('div');
+            orderItem.style.cssText = `
+                padding: 12px 16px;
+                border-bottom: 1px solid #eee;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                cursor: pointer;
+                transition: background 0.2s;
+            `;
+            orderItem.onmouseover = () => { orderItem.style.background = '#f0f0f0'; };
+            orderItem.onmouseout = () => { orderItem.style.background = 'transparent'; };
+            
+            const orderInfo = document.createElement('div');
+            orderInfo.textContent = order.summary;
+            orderInfo.style.cssText = `
+                flex: 1;
+                font-size: 14px;
+                color: #333;
+                font-weight: 500;
+            `;
+            
+            const selectBtn = document.createElement('button');
+            selectBtn.textContent = 'Select';
+            selectBtn.style.cssText = `
+                padding: 6px 12px;
+                background: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 12px;
+                cursor: pointer;
+                transition: background 0.2s;
+            `;
+            selectBtn.onmouseover = () => { selectBtn.style.background = '#45a049'; };
+            selectBtn.onmouseout = () => { selectBtn.style.background = '#4CAF50'; };
+            selectBtn.onclick = () => {
+                console.log('User chose order:', order.id);
+                dialog.remove();
+                sendOrderChoice('add_to_existing', order.id, orderData, name, phone);
+            };
+            
+            orderItem.appendChild(orderInfo);
+            orderItem.appendChild(selectBtn);
+            orderList.appendChild(orderItem);
+        });
+    }
+    
+    const buttonGroup = document.createElement('div');
+    buttonGroup.style.cssText = `
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+    `;
+    
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '✨ Create New Order Instead';
+    addBtn.style.cssText = `
+        flex: 1;
+        min-width: 200px;
+        padding: 14px 24px;
+        background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+    `;
+    addBtn.onmouseover = () => { 
+        addBtn.style.boxShadow = '0 6px 20px rgba(33, 150, 243, 0.4)';
+        addBtn.style.transform = 'translateY(-2px)';
+    };
+    addBtn.onmouseout = () => { 
+        addBtn.style.boxShadow = '0 4px 12px rgba(33, 150, 243, 0.3)';
+        addBtn.style.transform = 'translateY(0)';
+    };
+    addBtn.onclick = () => {
+        console.log('User chose: new order');
+        dialog.remove();
+        sendOrderChoice('new_order', null, orderData, name, phone);
+    };
+    
+    buttonGroup.appendChild(addBtn);
+    
+    content.appendChild(title);
+    content.appendChild(msg);
+    content.appendChild(orderList);
+    content.appendChild(buttonGroup);
+    dialog.appendChild(content);
+    
+    document.body.appendChild(dialog);
+    console.log('✅ Dialog appended to body');
+}
+
+function sendOrderChoice(choice, existingOrderID, orderData, name, phone) {
+    console.log('📤 Sending order choice:', choice);
+    
+    const tok = getAuthToken(); // Get the token using the same method
+    
+    const choiceRequest = {
+        choice: choice,
+        order_id: existingOrderID || 0,
+        items: orderData.items,
+        customer_name: name,
+        delivery_type: orderData.delivery_type,
+        address: orderData.address
+    };
+    
+    // Use relative URL with token parameter for ngrok compatibility
+    const tokenParam = tok ? `?t=${encodeURIComponent(tok)}` : '';
+    const apiUrl = `/api/chat/orders/choice${tokenParam}`;
+    
+    console.log('📤 API URL:', apiUrl);
+    console.log('📤 Token present:', !!tok);
+    
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(choiceRequest)
+    })
+    .then(async res => {
+        console.log('📥 Response status:', res.status);
+        const text = await res.text();
+        console.log('📥 Response text:', text);
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error('Failed to parse response:', e);
+            return { success: false, message: text };
+        }
+    })
+    .then(data => {
+        console.log('📥 Choice response:', data);
+        if (data.success) {
+            completeOrderSubmission(data, name, phone, orderData);
+        } else {
+            alert('❌ Error: ' + (data.message || 'Failed to process order'));
+            resetSubmitButton();
+        }
+    })
+    .catch(err => {
+        console.error('❌ Network error:', err);
+        alert('❌ Network error: ' + err.message);
+        resetSubmitButton();
+    });
+}
+
+function completeOrderSubmission(data, name, phone, orderData) {
+    const orderMsg = data.action === 'items_merged' 
+        ? `Items added to order #${data.orderID}!`
+        : `Order #${data.orderID} placed successfully!`;
+    
+    showToast(orderMsg, 'success');
+    
+    // Close form after a short delay
+    setTimeout(() => {
+        if (window.MessengerExtensions) {
+            window.MessengerExtensions.requestCloseBrowser(
+                () => console.log("✅ Webview closed"),
+                (err) => {
+                    console.log("❌ Error closing webview:", err);
+                    window.location.reload();
+                }
+            );
+        } else {
+            resetOrder();
+        }
+    }, 1500);
+}

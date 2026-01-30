@@ -18,6 +18,8 @@ export default function OrdersPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [filter, setFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [updating, setUpdating] = useState(null);
   const [cancelling, setCancelling] = useState(null);
   const [cancelModal, setCancelModal] = useState({ show: false, orderId: null });
@@ -265,11 +267,14 @@ export default function OrdersPage() {
     const dateFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
 
     const activeOrders = orders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled');
+    const deliveredOrders = orders.filter(o => o.status === 'delivered');
     const visibleOrders = filter === 'all'
       ? activeOrders
       : filter === 'pending'
         ? activeOrders.filter(o => o.status === 'pending' || o.status === 'scheduled')
-        : activeOrders.filter(o => o.status === filter);
+        : filter === 'delivered'
+          ? deliveredOrders
+          : activeOrders.filter(o => o.status === filter);
 
     const groupMap = new Map();
     const entries = visibleOrders.map(order => {
@@ -286,7 +291,12 @@ export default function OrdersPage() {
         statusKey
       };
     }).filter(entry => {
-      if (dateFilter === 'all') return true;
+      if (dateFilter === 'all' && !startDate && !endDate) return true;
+      if (startDate || endDate) {
+        const startMs = startDate ? new Date(startDate).getTime() : 0;
+        const endMs = endDate ? new Date(endDate).getTime() + 86400000 : Date.now();
+        return entry.createdAtMs >= startMs && entry.createdAtMs <= endMs;
+      }
       if (dateFilter === 'today') return entry.dayStartMs === todayStartMs;
       if (dateFilter === 'yesterday') return entry.dayStartMs === yesterdayStartMs;
       if (dateFilter === 'older') return entry.dayStartMs < yesterdayStartMs;
@@ -311,7 +321,7 @@ export default function OrdersPage() {
     });
 
     return Array.from(groupMap.values()).sort((a, b) => b.dayStartMs - a.dayStartMs);
-  }, [orders, filter, dateFilter, t]);
+  }, [orders, filter, dateFilter, startDate, endDate, t]);
 
   const filteredCount = useMemo(() => {
     return groupedOrders.reduce((sum, group) => sum + group.orders.length, 0);
@@ -321,7 +331,8 @@ export default function OrdersPage() {
     { key: 'all', labelKey: 'all', icon: 'grid' },
     { key: 'pending', labelKey: 'pending', icon: 'hourglass' },
     { key: 'preparing', labelKey: 'preparing', icon: 'egg-fried' },
-    { key: 'ready', labelKey: 'ready', icon: 'check-circle' }
+    { key: 'ready', labelKey: 'ready', icon: 'check-circle' },
+    { key: 'delivered', labelKey: 'delivered', icon: 'check-all' }
   ];
   const dateFilters = [
     { key: 'all', label: `${t('all') || 'All'} ${t('dates') || 'dates'}` },
@@ -633,23 +644,64 @@ export default function OrdersPage() {
                         <span className="text-muted small fw-semibold">{t('date') || 'Date'}</span>
                       </div>
                       <div className="d-flex flex-wrap align-items-center gap-2">
-                        {dateFilters.map(option => (
-                          <button
-                            key={option.key}
-                            type="button"
-                            onClick={() => setDateFilter(option.key)}
-                            className={`btn btn-sm rounded-pill px-3 ${dateFilter === option.key ? 'bg-primary-bake text-white' : 'bg-white border text-dark'}`}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
+                        <div className="d-flex gap-2 align-items-center">
+                          <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            value={startDate}
+                            onChange={(e) => {
+                              setStartDate(e.target.value);
+                              setDateFilter('custom');
+                            }}
+                            style={{ maxWidth: '140px' }}
+                            placeholder="From"
+                          />
+                          <span className="text-muted small">to</span>
+                          <input
+                            type="date"
+                            className="form-control form-control-sm"
+                            value={endDate}
+                            onChange={(e) => {
+                              setEndDate(e.target.value);
+                              setDateFilter('custom');
+                            }}
+                            style={{ maxWidth: '140px' }}
+                            placeholder="To"
+                          />
+                          {(startDate || endDate) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setStartDate('');
+                                setEndDate('');
+                                setDateFilter('all');
+                              }}
+                              className="btn btn-sm btn-link text-muted"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        <div className="d-flex flex-wrap align-items-center gap-2 border-start ps-2">
+                          {dateFilters.map(option => (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => {
+                                setDateFilter(option.key);
+                                setStartDate('');
+                                setEndDate('');
+                              }}
+                              className={`btn btn-sm rounded-pill px-3 ${dateFilter === option.key && !startDate && !endDate ? 'bg-primary-bake text-white' : 'bg-white border text-dark'}`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <div className="mt-3">
-                    <span className="text-muted small">Delivered orders are archived. View them in </span>
-                    <Link href="/admin/orders/archive" className="small">Archive</Link>.
-                  </div>
+
                 </div>
               </div>
 

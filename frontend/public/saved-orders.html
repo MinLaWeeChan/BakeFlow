@@ -550,9 +550,39 @@
             font-size: 14px;
             color: var(--gray-900);
         }
+        .reorder-item-qty-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
         .reorder-item-qty {
             font-size: 13px;
             color: var(--gray-500);
+            min-width: 30px;
+            text-align: center;
+            font-weight: 600;
+        }
+        .qty-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+            color: var(--gray-700);
+            transition: all 0.2s;
+        }
+        .qty-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: rgba(218, 101, 50, 0.05);
+        }
+        .qty-btn:active {
+            transform: scale(0.95);
         }
         .reorder-item-price {
             font-weight: 700;
@@ -1327,7 +1357,15 @@
                             <img class="reorder-item-thumb" src="${img}" alt="">
                             <div class="reorder-item-info">
                                 <div class="reorder-item-name">${escapeHtml(name)}</div>
-                                <div class="reorder-item-qty">Qty: ${qty}</div>
+                                <div class="reorder-item-qty-control">
+                                    <button class="qty-btn minus" onclick="changeReorderItemQty(${idx}, -1)">
+                                        <i data-lucide="minus" style="width:14px;height:14px;"></i>
+                                    </button>
+                                    <span class="reorder-item-qty">${qty}</span>
+                                    <button class="qty-btn plus" onclick="changeReorderItemQty(${idx}, 1)">
+                                        <i data-lucide="plus" style="width:14px;height:14px;"></i>
+                                    </button>
+                                </div>
                                 ${priceChanged ? `<div class="price-change"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> Price changed</div>` : ''}
                                 ${hasNote ? `<div style="font-size:11px;color:var(--primary);margin-top:2px;"><i data-lucide="message-square" style="width:10px;height:10px;display:inline;"></i> ${escapeHtml(customNote)}</div>` : ''}
                                 <div class="custom-note-section">
@@ -1450,6 +1488,31 @@
             }, 200);
         }
 
+        function changeReorderItemQty(idx, delta) {
+            const item = reorderState.items[idx];
+            if (!item) return;
+            
+            const currentQty = getItemQty(item);
+            const newQty = Math.max(0, currentQty + delta);
+            
+            // If quantity reaches 0, remove the item
+            if (newQty === 0) {
+                reorderState.removedItems[idx] = true;
+                delete reorderState.replacements[idx];
+            } else {
+                // Update the item quantity
+                delete reorderState.removedItems[idx];
+                if (item.qty !== undefined) {
+                    item.qty = newQty;
+                } else if (item.quantity !== undefined) {
+                    item.quantity = newQty;
+                }
+            }
+            
+            // Re-render to update totals and display
+            renderReorderItems();
+        }
+
         function updateCustomNote(idx, note) {
             reorderState.customNotes[idx] = note.trim();
             renderReorderItems();
@@ -1460,81 +1523,141 @@
             if (btn.disabled) return;
             
             btn.classList.add('loading');
-            btn.innerHTML = '<span>Adding...</span>';
+            btn.innerHTML = '<span>Checking stock...</span>';
 
-            setTimeout(() => {
-                const order = savedOrders[selectedOrderIdx];
-                // Update last_used
-                order.last_used = new Date().toISOString();
-                saveSavedOrders();
-
-                // Build cart items with replacements and notes
-                const cartItems = [];
-                reorderState.items.forEach((it, idx) => {
-                    // Skip removed items
-                    if (reorderState.removedItems[idx]) return;
-                    
-                    const qty = getItemQty(it);
-                    const customNote = reorderState.customNotes[idx] || '';
-                    
-                    // Check for replacement
-                    const replacementId = reorderState.replacements[idx];
-                    if (replacementId) {
-                        const p = getProductById(replacementId);
-                        if (p) {
-                            cartItems.push({
-                                id: p.id,
-                                qty: qty,
-                                price: Number(p.price) || 0,
-                                name: p.name,
-                                image: p.image_url || '',
-                                note: customNote
-                            });
-                        }
-                    } else {
-                        // Original item - only if available
-                        const p = getProductForItem(it);
-                        if (p) {
-                            cartItems.push({
-                                id: p.id,
-                                qty: qty,
-                                price: Number(p.price) || 0,
-                                name: p.name,
-                                image: p.image_url || '',
-                                note: customNote
-                            });
-                        }
-                    }
-                });
-
-                // Save cart to localStorage and redirect
-                const userId = getUserId();
-                const tok = getToken();
-                const cartKey = tok ? `pending_reorder_t_${tok}` : `pending_reorder_${userId}`;
-                localStorage.setItem(cartKey, JSON.stringify(cartItems));
+            // Build items for stock validation
+            const itemsToValidate = [];
+            reorderState.items.forEach((it, idx) => {
+                // Skip removed items
+                if (reorderState.removedItems[idx]) return;
                 
-                // Save custom notes separately if any exist
-                const notesKey = tok ? `pending_notes_t_${tok}` : `pending_notes_${userId}`;
-                const notes = {};
-                cartItems.forEach(item => {
-                    if (item.note) {
-                        notes[item.id] = item.note;
+                const qty = getItemQty(it);
+                const replacementId = reorderState.replacements[idx];
+                const productId = replacementId || getItemProductId(it);
+                
+                if (productId) {
+                    itemsToValidate.push({
+                        product_id: productId,
+                        quantity: qty
+                    });
+                }
+            });
+
+            if (itemsToValidate.length === 0) {
+                showToast('No items to add to cart');
+                btn.classList.remove('loading');
+                btn.innerHTML = '<i data-lucide="shopping-cart"></i><span>Add to Cart & Checkout</span>';
+                return;
+            }
+
+            // Validate stock before proceeding
+            fetch('/api/stock/validate-cart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: itemsToValidate })
+            })
+            .then(res => res.json())
+            .then(validation => {
+                btn.classList.remove('loading');
+                btn.innerHTML = '<i data-lucide="shopping-cart"></i><span>Add to Cart & Checkout</span>';
+
+                if (!validation.valid) {
+                    // Some items are unavailable
+                    const unavailableItems = validation.items?.filter(i => !i.is_available) || [];
+                    if (unavailableItems.length > 0) {
+                        const itemMessages = unavailableItems.map(i => {
+                            const product = getProductById(i.product_id);
+                            const productName = product ? product.name : `Product #${i.product_id}`;
+                            return `${productName}: ${i.message}`;
+                        });
+                        showToast('Some items are no longer available:\n' + itemMessages.join('\n'), 'error');
+                    } else {
+                        showToast(validation.message || 'Unable to validate cart availability', 'error');
                     }
-                });
-                if (Object.keys(notes).length > 0) {
-                    localStorage.setItem(notesKey, JSON.stringify(notes));
+                    return;
                 }
 
-                // Redirect to order form
-                const qs = new URLSearchParams();
-                // Preserve original user_id param (if any) for backward-compat
-                const originalUserId = new URLSearchParams(window.location.search).get('user_id') || '';
-                if (originalUserId) qs.set('user_id', originalUserId);
-                if (tok) qs.set('t', tok);
-                qs.set('reorder', '1');
-                const url = `order-form.html?${qs.toString()}`;
-                window.location.href = url;
-            }, 400);
+                // Stock validation passed, proceed with adding to cart
+                setTimeout(() => {
+                    const order = savedOrders[selectedOrderIdx];
+                    // Update last_used
+                    order.last_used = new Date().toISOString();
+                    saveSavedOrders();
+
+                    // Build cart items with replacements and notes
+                    const cartItems = [];
+                    reorderState.items.forEach((it, idx) => {
+                        // Skip removed items
+                        if (reorderState.removedItems[idx]) return;
+                        
+                        const qty = getItemQty(it);
+                        const customNote = reorderState.customNotes[idx] || '';
+                        
+                        // Check for replacement
+                        const replacementId = reorderState.replacements[idx];
+                        if (replacementId) {
+                            const p = getProductById(replacementId);
+                            if (p) {
+                                cartItems.push({
+                                    id: p.id,
+                                    qty: qty,
+                                    price: Number(p.price) || 0,
+                                    name: p.name,
+                                    image: p.image_url || '',
+                                    note: customNote
+                                });
+                            }
+                        } else {
+                            // Original item - only if available
+                            const p = getProductForItem(it);
+                            if (p) {
+                                cartItems.push({
+                                    id: p.id,
+                                    qty: qty,
+                                    price: Number(p.price) || 0,
+                                    name: p.name,
+                                    image: p.image_url || '',
+                                    note: customNote
+                                });
+                            }
+                        }
+                    });
+
+                    // Save cart to localStorage and redirect
+                    const userId = getUserId();
+                    const tok = getToken();
+                    const cartKey = tok ? `pending_reorder_t_${tok}` : `pending_reorder_${userId}`;
+                    localStorage.setItem(cartKey, JSON.stringify(cartItems));
+                    
+                    // Save custom notes separately if any exist
+                    const notesKey = tok ? `pending_notes_t_${tok}` : `pending_notes_${userId}`;
+                    const notes = {};
+                    cartItems.forEach(item => {
+                        if (item.note) {
+                            notes[item.id] = item.note;
+                        }
+                    });
+                    if (Object.keys(notes).length > 0) {
+                        localStorage.setItem(notesKey, JSON.stringify(notes));
+                    }
+
+                    // Redirect to order form
+                    const qs = new URLSearchParams();
+                    // Preserve original user_id param (if any) for backward-compat
+                    const originalUserId = new URLSearchParams(window.location.search).get('user_id') || '';
+                    if (originalUserId) qs.set('user_id', originalUserId);
+                    if (tok) qs.set('t', tok);
+                    qs.set('reorder', '1');
+                    const url = `order-form.html?${qs.toString()}`;
+                    window.location.href = url;
+                }, 400);
+            })
+            .catch(err => {
+                console.error('Stock validation error:', err);
+                btn.classList.remove('loading');
+                btn.innerHTML = '<i data-lucide="shopping-cart"></i><span>Add to Cart & Checkout</span>';
+                showToast('Unable to check item availability. Please try again.', 'error');
+            });
         });
 
         // Edit

@@ -105,6 +105,9 @@ func SetupRoutes() http.Handler {
 	// Chat Order API (from webview)
 	router.HandleFunc("/api/chat/orders", controllers.CreateChatOrder).Methods("POST", "OPTIONS")
 
+	// Handle user choice: add to existing order or create new
+	router.HandleFunc("/api/chat/orders/choice", controllers.HandleOrderChoice).Methods("POST", "OPTIONS")
+
 	// Authenticated webview user APIs (requires signed token ?t=...)
 	router.HandleFunc("/api/me/saved-orders", controllers.MeSavedOrders).Methods("GET", "POST", "OPTIONS")
 	router.HandleFunc("/api/me/saved-orders/{id:[0-9]+}", controllers.MeDeleteSavedOrder).Methods("DELETE", "OPTIONS")

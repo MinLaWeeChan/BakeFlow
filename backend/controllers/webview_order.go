@@ -20,7 +20,7 @@ func ShowWebviewOrderForm(userID string) {
 	// Configure base domain via WEBVIEW_BASE_URL (e.g. https://<your-ngrok>.ngrok-free.dev)
 	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("WEBVIEW_BASE_URL")), "/")
 	if baseURL == "" {
-		baseURL = "https://consuelo-subcardinal-nonfallaciously.ngrok-free.dev"
+		baseURL = "https://nonfortifying-karin-undistantly.ngrok-free.dev"
 	}
 
 	// Signed token binds this webview session to the Messenger PSID.
@@ -58,7 +58,7 @@ func ShowWebviewOrderForm(userID string) {
 			Type:                "web_url",
 			Title:               "🛒 Open Menu",
 			URL:                 webviewURL,
-			MessengerExtensions: true,
+			MessengerExtensions: false,
 			WebviewHeightRatio:  "full",
 		},
 	}

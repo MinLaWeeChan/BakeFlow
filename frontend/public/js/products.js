@@ -132,6 +132,15 @@ async function loadProducts() {
 function getFilteredProducts() {
     let filtered = [...window.products];
     
+    // Filter out sold out items
+    filtered = filtered.filter(p => {
+        const stockInfo = window.stockStatus && window.stockStatus[p.id];
+        const isOutOfStock = stockInfo ? stockInfo.status === 'out_of_stock' : false;
+        const status = p.availability_status || 'available';
+        const isSoldOut = status === 'sold_out' || isOutOfStock;
+        return !isSoldOut;
+    });
+    
     // Filter by category
     if (window.productFilters.category && window.productFilters.category !== 'all') {
         filtered = filtered.filter(p => p.category === window.productFilters.category);
