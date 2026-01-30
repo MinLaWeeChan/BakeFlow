@@ -531,40 +531,39 @@ function submitOrder() {
 
     console.log('📦 Sending order:', orderData);
 
-    fetch('http://localhost:8080/api/chat/orders', {
+    // Use relative URL so it works with both localhost and ngrok
+    const apiUrl = '/api/chat/orders';
+    
+    fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
     })
-    .then(res => res.json())
+    .then(res => {
+        console.log('📥 Response status:', res.status);
+        return res.json();
+    })
     .then(data => {
-        if (data.success) {
-            alert(`Order #${data.order_id} placed successfully!\n\nWe'll contact you at ${phone} soon.\n\nCheck your Messenger for confirmation.`);
-            
-            if (window.MessengerExtensions) {
-                window.MessengerExtensions.requestCloseBrowser(
-                    () => console.log("✅ Webview closed"),
-                    (err) => {
-                        console.log("❌ Error closing webview:", err);
-                        window.location.reload();
-                    }
-                );
-            } else {
-                cart = {};
-                deliveryType = null;
-                document.getElementById('customerName').value = '';
-                document.getElementById('customerPhone').value = '';
-                document.getElementById('customerAddress').value = '';
-                document.getElementById('orderNotes').value = '';
-                backToCart();
-                updateCart();
-            }
+        console.log('📥 Full response data:', JSON.stringify(data, null, 2));
+        console.log('📥 data.action:', data.action);
+        console.log('📥 data.success:', data.success);
+        console.log('📥 data.existingOrderID:', data.existingOrderID);
+        
+        // Check if user needs to choose between adding to existing order or creating new
+        // Check this FIRST before success, because ask_user_choice also has success: true
+        if (data.action === 'ask_user_choice') {
+            console.log('✅ Showing choice dialog!');
+            showOrderChoiceDialog(data, orderData, name, phone);
+        } else if (data.success) {
+            console.log('✅ Order successful, completing submission');
+            completeOrderSubmission(data, phone);
         } else {
+            console.log('❌ Order failed:', data.message);
             alert('❌ Order failed: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(err => {
-        console.error('❌ Error:', err);
+        console.error('❌ Fetch error:', err);
         alert('❌ Network error. Check console for details.');
     });
 }
@@ -578,3 +577,179 @@ window.useMyLocation = useMyLocation;
 window.findOnMap = findOnMap;
 window.appendNote = appendNote;
 window.backToCart = backToCart;
+
+// ========== Order Choice Dialog ==========
+function showOrderChoiceDialog(choiceData, orderData, name, phone) {
+    console.log('🎨 Creating choice dialog');
+    
+    // Remove any existing dialog first
+    const existing = document.getElementById('orderChoiceDialog');
+    if (existing) {
+        existing.remove();
+    }
+    
+    // Create a modal dialog
+    const dialog = document.createElement('div');
+    dialog.id = 'orderChoiceDialog';
+    dialog.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 380px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+        text-align: center;
+    `;
+    
+    const title = document.createElement('h2');
+    title.textContent = '🛒 Add to Existing Order?';
+    title.style.cssText = 'margin: 0 0 8px 0; font-size: 18px; color: #333;';
+    
+    const msg = document.createElement('p');
+    msg.textContent = 'You have an active order. Would you like to add these items to it or create a new one?';
+    msg.style.cssText = 'margin: 0 0 16px 0; font-size: 14px; color: #666; line-height: 1.5;';
+    
+    const existing_order = document.createElement('div');
+    existing_order.style.cssText = `
+        background: #f5f5f5;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        color: #555;
+    `;
+    existing_order.textContent = choiceData.existingOrderSummary || 'Existing Order';
+    
+    const buttonGroup = document.createElement('div');
+    buttonGroup.style.cssText = 'display: flex; gap: 8px;';
+    
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '✅ Add to Existing';
+    addBtn.style.cssText = `
+        flex: 1;
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        background: #4CAF50;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 13px;
+    `;
+    addBtn.onclick = () => {
+        console.log('User chose: add to existing');
+        dialog.remove();
+        sendOrderChoice('add_to_existing', choiceData.existingOrderID, orderData, name, phone);
+    };
+    
+    const newBtn = document.createElement('button');
+    newBtn.textContent = '🆕 New Order';
+    newBtn.style.cssText = `
+        flex: 1;
+        padding: 10px;
+        border: none;
+        border-radius: 6px;
+        background: #2196F3;
+        color: white;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 13px;
+    `;
+    newBtn.onclick = () => {
+        console.log('User chose: new order');
+        dialog.remove();
+        sendOrderChoice('new_order', null, orderData, name, phone);
+    };
+    
+    buttonGroup.appendChild(addBtn);
+    buttonGroup.appendChild(newBtn);
+    
+    content.appendChild(title);
+    content.appendChild(msg);
+    content.appendChild(existing_order);
+    content.appendChild(buttonGroup);
+    dialog.appendChild(content);
+    
+    document.body.appendChild(dialog);
+    console.log('✅ Dialog appended to body');
+}
+
+function sendOrderChoice(choice, existingOrderID, originalOrderData, name, phone) {
+    console.log('📤 Sending order choice:', choice);
+    
+    const choiceRequest = {
+        choice: choice,
+        order_id: existingOrderID || 0,
+        items: originalOrderData.items,
+        customer_name: name,
+        delivery_type: originalOrderData.delivery_type,
+        address: originalOrderData.address
+    };
+    
+    // Get token from URL if it exists
+    const urlParams = new URLSearchParams(window.location.search);
+    const tok = urlParams.get('t') || '';
+    const tokenParam = tok ? `?t=${encodeURIComponent(tok)}` : '';
+    
+    // Use relative URL so it works with both localhost and ngrok
+    const apiUrl = `/api/chat/orders/choice${tokenParam}`;
+    
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(choiceRequest)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            completeOrderSubmission(data, phone);
+        } else {
+            alert('❌ Error: ' + (data.message || 'Failed to process order'));
+        }
+    })
+    .catch(err => {
+        console.error('❌ Error:', err);
+        alert('❌ Network error. Check console.');
+    });
+}
+
+function completeOrderSubmission(data, phone) {
+    const orderMsg = data.action === 'items_merged' 
+        ? `Items added to order #${data.orderID}!`
+        : `Order #${data.orderID} placed successfully!`;
+    
+    alert(`✅ ${orderMsg}\n\nWe'll contact you at ${phone} soon.\n\nCheck your Messenger for confirmation.`);
+    
+    if (window.MessengerExtensions) {
+        window.MessengerExtensions.requestCloseBrowser(
+            () => console.log("✅ Webview closed"),
+            (err) => {
+                console.log("❌ Error closing webview:", err);
+                window.location.reload();
+            }
+        );
+    } else {
+        cart = {};
+        deliveryType = null;
+        document.getElementById('customerName').value = '';
+        document.getElementById('customerPhone').value = '';
+        document.getElementById('customerAddress').value = '';
+        document.getElementById('orderNotes').value = '';
+        backToCart();
+        updateCart();
+    }
+}

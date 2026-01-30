@@ -165,24 +165,10 @@
     <section class="actions">
       <button class="btn primary" id="downloadPdfBtn">Download Invoice (PDF)</button>
       <div class="secondary-actions">
-        <button class="btn" id="saveImageBtn">Save as Image</button>
         <a class="btn ghost" id="backHomeBtn" href="/order-form.html">Back to Home</a>
       </div>
     </section>
   </main>
-  <div class="modal" id="saveImageModal" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="saveImageTitle">
-      <div class="modal-header">
-        <div class="modal-title" id="saveImageTitle">Save as Image</div>
-        <button class="modal-close" type="button" id="saveImageClose">✕</button>
-      </div>
-      <div class="modal-text">Take a screenshot of this invoice on your device. It will save exactly as shown.</div>
-      <div class="modal-actions">
-        <button class="btn primary" id="saveImageDone" type="button">Got it</button>
-        <button class="btn" id="saveImageSecondary" type="button">Close</button>
-      </div>
-    </div>
-  </div>
 
   <script>
     const qs = new URLSearchParams(location.search);
@@ -207,21 +193,6 @@
     document.getElementById('downloadPdfBtn').addEventListener('click', () => {
       window.__bfAfterPrintReturn = true;
       window.print();
-    });
-    document.getElementById('saveImageBtn').addEventListener('click', () => {
-      document.getElementById('saveImageModal').classList.add('show');
-    });
-    const closeSaveImage = () => {
-      document.getElementById('saveImageModal').classList.remove('show');
-    };
-    document.getElementById('saveImageClose').addEventListener('click', closeSaveImage);
-    document.getElementById('saveImageDone').addEventListener('click', () => {
-      closeSaveImage();
-      goBackToOrderForm();
-    });
-    document.getElementById('saveImageSecondary').addEventListener('click', closeSaveImage);
-    document.getElementById('saveImageModal').addEventListener('click', (e) => {
-      if (e.target.id === 'saveImageModal') closeSaveImage();
     });
     window.addEventListener('afterprint', () => {
       if (window.__bfAfterPrintReturn) {

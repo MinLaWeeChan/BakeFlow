@@ -70,12 +70,8 @@ func checkOrderRateLimit(senderID string) (bool, time.Duration, error) {
 	now := time.Now()
 	shortWindow := 10 * time.Minute
 	shortLimit := 3
-	longWindow := 24 * time.Hour
-	longLimit := 5
 	shortCount := 0
-	longCount := 0
 	var oldestShort time.Time
-	var oldestLong time.Time
 
 	for _, order := range recentOrders {
 		age := now.Sub(order.CreatedAt)
@@ -85,23 +81,10 @@ func checkOrderRateLimit(senderID string) (bool, time.Duration, error) {
 				oldestShort = order.CreatedAt
 			}
 		}
-		if age <= longWindow {
-			longCount++
-			if oldestLong.IsZero() || order.CreatedAt.Before(oldestLong) {
-				oldestLong = order.CreatedAt
-			}
-		}
 	}
 
 	if shortCount >= shortLimit {
 		retryAfter := shortWindow - now.Sub(oldestShort)
-		if retryAfter < time.Minute {
-			retryAfter = time.Minute
-		}
-		return true, retryAfter, nil
-	}
-	if longCount >= longLimit {
-		retryAfter := longWindow - now.Sub(oldestLong)
 		if retryAfter < time.Minute {
 			retryAfter = time.Minute
 		}

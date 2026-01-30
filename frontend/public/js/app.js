@@ -168,6 +168,11 @@ async function init() {
     // Setup map tabs
     setupMapTabs();
 
+    // Initialize customer info management
+    if (window.initCustomerInfoManagement) {
+        window.initCustomerInfoManagement();
+    }
+
     if (window.loadActiveOrder) {
         await Promise.resolve(window.loadActiveOrder());
     }
