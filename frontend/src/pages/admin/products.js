@@ -20,53 +20,71 @@ export default function ProductsPage() {
   const { notifications, unreadCount, hasUnread, markAsRead, markAllRead, clearAll } = useNotifications();
   const { t } = useTranslation();
 
-  const fetchStockStatus = useCallback(async (productIds) => {
-    if (!productIds.length) {
-      setStockStatus({});
-      return;
-    }
-    try {
-      const res = await fetch(`${API_BASE}/api/stock/bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_ids: productIds })
-      });
-      if (!res.ok) throw new Error(`Stock API error ${res.status}`);
-      const data = await res.json();
-      const next = {};
-      (data.products || []).forEach(item => {
-        next[item.product_id] = item;
-      });
-      setStockStatus(next);
-    } catch (e) {
-      console.error(e);
-      setStockStatus({});
-    }
-  }, [API_BASE]);
+  // Separate effect for fetching products - only depends on filter
+  useEffect(() => {
+    let isMounted = true;
 
-  const fetchProducts = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (filter.category) params.append('category', filter.category);
-      if (filter.status) params.append('status', filter.status);
-      if (filter.search) params.append('search', filter.search);
-      const res = await fetch(`${API_BASE}/api/products?${params.toString()}`);
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      const data = await res.json();
-      const nextProducts = data.products || [];
-      setProducts(nextProducts);
-      await fetchStockStatus(nextProducts.map(product => product.id));
-      setError(null);
-    } catch (e) {
-      console.error(e);
-      setError('Failed to load products');
-    } finally {
-      setLoading(false);
-    }
-  }, [API_BASE, fetchStockStatus, filter]);
+    const fetchProducts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const params = new URLSearchParams();
+        if (filter.category) params.append('category', filter.category);
+        if (filter.status) params.append('status', filter.status);
+        if (filter.search) params.append('search', filter.search);
+        
+        const res = await fetch(`${API_BASE}/api/products?${params.toString()}`);
+        
+        if (!isMounted) return;
+        
+        if (!res.ok) throw new Error(`API error ${res.status}`);
+        const data = await res.json();
+        const nextProducts = data.products || [];
+        
+        if (!isMounted) return;
+        
+        setProducts(nextProducts);
+        setError(null);
+        setLoading(false);
+        
+        // Fetch stock status in background - fire and forget
+        if (nextProducts.length > 0) {
+          const productIds = nextProducts.map(product => product.id);
+          fetch(`${API_BASE}/api/stock/bulk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_ids: productIds })
+          })
+            .then(stockRes => {
+              if (stockRes.ok) return stockRes.json();
+              throw new Error('Stock fetch failed');
+            })
+            .then(stockData => {
+              if (!isMounted) return;
+              const next = {};
+              (stockData.products || []).forEach(item => {
+                next[item.product_id] = item;
+              });
+              setStockStatus(next);
+            })
+            .catch(e => {
+              console.error('Failed to fetch stock status:', e);
+            });
+        }
+      } catch (e) {
+        if (!isMounted) return;
+        console.error('Failed to fetch products:', e);
+        setError('Failed to load products');
+        setLoading(false);
+      }
+    };
 
-  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+    fetchProducts();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [filter, API_BASE]);
 
   const showNotification = (message, type) => {
     setNotification({ show: true, message, type });
@@ -197,7 +215,7 @@ export default function ProductsPage() {
                   { icon: 'bi-exclamation-triangle', label: t('lowStockItems'), value: lowStockCount },
                   { icon: 'bi-eye', label: t('totalViews'), value: products.reduce((s, p) => s + (p.views || 0), 0) }
                 ].map((c, idx) => (
-                  <div className="col-lg-3 col-md-6" key={idx}>
+                  <div className="col-lg-3 col-md-6" key={`kpi-${c.label}`}>
                     <div className="card shadow-sm border-light rounded-3 h-100">
                       <div className="card-body p-4">
                         <div className="d-flex align-items-center gap-3">
