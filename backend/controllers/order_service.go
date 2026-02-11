@@ -153,13 +153,14 @@ func confirmOrder(userID string) {
 				VALUES ($1, $2, $3, $4, NOW())
 			`, existingOrder.ID, item.Product, item.Quantity, price)
 		}
+		// Recalculate order totals from actual items
 		_, _ = configs.DB.Exec(`
 			UPDATE orders
-			SET total_items = total_items + $1,
-			    subtotal = subtotal + $2,
-			    total_amount = total_amount + $2
-			WHERE id = $3
-		`, addedItems, addedSubtotal, existingOrder.ID)
+			SET total_items = (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = $1),
+			    subtotal = (SELECT COALESCE(SUM(price * quantity), 0) FROM order_items WHERE order_id = $1),
+			    total_amount = (SELECT COALESCE(SUM(price * quantity), 0) FROM order_items WHERE order_id = $1) - COALESCE(discount, 0) + COALESCE(delivery_fee, 0)
+			WHERE id = $1
+		`, existingOrder.ID)
 
 		itemSummary := fmt.Sprintf("%d item(s) added", addedItems)
 		title := "Items Added"

@@ -4,73 +4,58 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Order Confirmed</title>
+  <link rel="stylesheet" href="/css/variables.css">
   <style>
     *{box-sizing:border-box}
-    :root{
-      --brand:#1f2937;
-      --bg:#ffffff;
-      --text:#111827;
-      --muted:#6b7280;
-      --divider:#e5e7eb;
-      --card:#ffffff;
-      --success:#16a34a;
-      --success-light:#dcfce7;
-    }
     body{
       margin:0;
-      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;
-      background:var(--bg);
-      color:var(--text);
+      font-family:var(--font-family);
+      background:var(--cream);
+      color:var(--gray-800);
     }
-    .page{max-width:640px;margin:0 auto;padding:28px 16px 40px}
-    .confirm-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:20px}
-    .success-icon{width:72px;height:72px;border-radius:999px;background:var(--success-light);color:var(--success);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800}
-    .confirm-title{font-size:24px;font-weight:800;letter-spacing:-0.01em}
-    .confirm-text{font-size:14px;color:var(--muted)}
-    .muted{color:var(--muted);font-size:13px}
-    .card{background:var(--card);border:1px solid var(--divider);border-radius:14px;padding:16px;margin:12px 0}
-    .card-title{font-weight:800;font-size:15px;margin-bottom:10px}
+    .page{max-width:var(--content-max-width);margin:0 auto;padding:28px 16px 40px}
+    .confirm-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:24px}
+    .success-icon{width:72px;height:72px;border-radius:var(--radius-full);background:var(--success-light);color:var(--success);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800}
+    .confirm-title{font-size:24px;font-weight:800;letter-spacing:-0.01em;color:var(--gray-900)}
+    .confirm-text{font-size:14px;color:var(--gray-500)}
+    .muted{color:var(--gray-500);font-size:13px}
+    .card{background:var(--warm-white);border:1px solid var(--gray-200);border-radius:var(--radius-lg);padding:16px;margin:12px 0;box-shadow:var(--shadow-xs)}
+    .card-title{font-weight:800;font-size:15px;margin-bottom:10px;color:var(--gray-800)}
     .summary-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px}
     .summary-item{display:flex;flex-direction:column;gap:4px}
-    .summary-label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
-    .summary-value{font-size:14px;font-weight:700}
-    .items-header{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;padding:6px 0;border-bottom:1px solid var(--divider)}
-    .item-row{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--divider)}
+    .summary-label{font-size:12px;color:var(--gray-500);font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
+    .summary-value{font-size:14px;font-weight:700;color:var(--gray-800)}
+    .items-header{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;font-size:12px;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.04em;padding:6px 0;border-bottom:1px solid var(--gray-200)}
+    .item-row{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--gray-100)}
     .item-row:last-child{border-bottom:none}
-    .item-name{font-weight:600}
+    .item-name{font-weight:600;color:var(--gray-800)}
     .item-qty,.item-unit,.item-total{text-align:right;font-weight:700}
-    .item-unit{color:var(--muted);font-weight:600}
+    .item-unit{color:var(--gray-500);font-weight:600}
     .promo-rows{display:flex;flex-direction:column;gap:8px;margin-top:10px}
     .promo-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--success);font-weight:700}
     .totals{display:flex;flex-direction:column;gap:8px}
     .total-row{display:flex;justify-content:space-between;gap:8px;font-size:14px}
-    .total-row .label{color:var(--muted)}
+    .total-row .label{color:var(--gray-500)}
     .total-row.discount{color:var(--success);font-weight:700}
-    .total-row.final{font-size:18px;font-weight:800}
+    .total-row.final{font-size:18px;font-weight:800;color:var(--gray-900)}
     .actions{display:flex;flex-direction:column;gap:10px;margin-top:16px}
-    .btn{width:100%;height:52px;border-radius:12px;border:1px solid var(--divider);background:#fff;color:var(--text);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;text-decoration:none}
-    .btn.primary{background:#111827;color:#fff;border:none}
+    .btn{width:100%;height:52px;border-radius:var(--radius);border:1px solid var(--gray-200);background:var(--warm-white);color:var(--gray-800);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;transition:background var(--transition),box-shadow var(--transition)}
+    .btn.primary{background:var(--primary);color:#fff;border:none;box-shadow:var(--shadow-sm)}
+    .btn.primary:active{background:var(--primary-dark)}
+    .btn.ghost:active{background:var(--gray-100)}
     .secondary-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .btn.ghost{background:#fff}
-    .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(15,23,42,0.5);backdrop-filter:blur(6px);z-index:40}
-    .modal.show{display:flex}
-    .modal-card{width:100%;max-width:420px;background:#fff;border-radius:18px;border:1px solid var(--divider);box-shadow:0 20px 60px rgba(15,23,42,0.2);padding:18px}
-    .modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-    .modal-title{font-size:16px;font-weight:800}
-    .modal-close{width:32px;height:32px;border-radius:10px;border:1px solid var(--divider);background:#fff;color:var(--text);font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer}
-    .modal-text{font-size:14px;color:var(--muted);line-height:1.5;margin-bottom:16px}
-    .modal-actions{display:flex;gap:10px}
-    .modal-actions .btn{height:46px;font-size:14px}
+    .btn.ghost{background:var(--warm-white)}
     .rating-content{display:flex;flex-direction:column;gap:14px}
-    .rating-item{border:1px solid var(--divider);border-radius:12px;padding:12px}
+    .rating-item{border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px;background:var(--cream)}
     .rating-item-header{display:flex;gap:10px;align-items:center;margin-bottom:10px}
-    .rating-img{width:48px;height:48px;border-radius:10px;object-fit:cover;background:#f3f4f6}
-    .rating-item-name{font-weight:700}
+    .rating-img{width:48px;height:48px;border-radius:var(--radius-sm);object-fit:cover;background:var(--gray-100)}
+    .rating-item-name{font-weight:700;color:var(--gray-800)}
     .rating-stars{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-    .star-btn{border:1px solid var(--divider);background:#fff;border-radius:999px;padding:6px 12px;font-weight:700;cursor:pointer}
-    .star-btn.active{background:#111827;color:#fff;border-color:#111827}
-    .rating-comment{width:100%;min-height:64px;border:1px solid var(--divider);border-radius:10px;padding:8px;font-size:13px}
-    .rating-message{font-size:13px;color:var(--muted)}
+    .star-btn{border:1px solid var(--gray-200);background:var(--warm-white);border-radius:var(--radius-full);padding:6px 12px;font-weight:700;cursor:pointer;transition:background var(--transition-fast),color var(--transition-fast)}
+    .star-btn.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+    .rating-comment{width:100%;min-height:64px;border:1px solid var(--gray-200);border-radius:var(--radius-sm);padding:8px;font-size:13px;font-family:var(--font-family);background:var(--warm-white);color:var(--gray-800);resize:vertical}
+    .rating-comment:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(196,93,53,0.12)}
+    .rating-message{font-size:13px;color:var(--gray-500)}
     .rating-actions{margin-top:8px}
     @media (max-width:520px){
       .summary-grid{grid-template-columns:1fr}
@@ -173,6 +158,7 @@
   <script>
     const qs = new URLSearchParams(location.search);
     const orderId = qs.get('order_id') || '—';
+    const orderIdDisplay = orderId !== '—' ? `BF-${orderId}` : '—';
     let resolvedUserId = qs.get('user_id') || '';
     try {
       if (!resolvedUserId || resolvedUserId === 'guest') {
@@ -187,44 +173,173 @@
     if (tok) returnParams.set('t', tok);
     const returnUrl = '/order-form.html' + (returnParams.toString() ? `?${returnParams.toString()}` : '');
     const userId = resolvedUserId || 'guest';
-    document.getElementById('orderId').textContent = orderId;
+    document.getElementById('orderId').textContent = orderIdDisplay;
     document.getElementById('backHomeBtn').setAttribute('href', returnUrl);
     const goBackToOrderForm = () => { window.location.href = returnUrl; };
-    document.getElementById('downloadPdfBtn').addEventListener('click', () => {
-      window.__bfAfterPrintReturn = true;
-      window.print();
-    });
-    window.addEventListener('afterprint', () => {
-      if (window.__bfAfterPrintReturn) {
-        window.__bfAfterPrintReturn = false;
-        goBackToOrderForm();
+
+    const pdfEscape = (value) => String(value ?? '')
+      .replace(/[^\x20-\x7E]/g, '?')
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)');
+
+    const buildInvoiceLines = (d) => {
+      const money = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—';
+      };
+      const dt = new Date(d.created_at || Date.now());
+      const lines = [];
+      lines.push('BakeFlow - Invoice');
+      lines.push(`Order: BF-${orderId}`);
+      lines.push(`Date: ${dt.toLocaleString()}`);
+      const deliveryValue = d.delivery_type || (String(d.address || '').toLowerCase().includes('pickup') ? 'Pick Up' : 'Delivery');
+      lines.push(`Delivery: ${deliveryValue}`);
+      if (d.customer_name) lines.push(`Customer: ${d.customer_name}`);
+      if (d.customer_phone) lines.push(`Phone: ${d.customer_phone}`);
+      if (d.address) lines.push(`Address: ${d.address}`);
+      lines.push('');
+      lines.push('Items:');
+      (d.items || []).forEach((it) => {
+        const name = it.name || it.product || '—';
+        const qty = Number(it.qty || it.quantity || 0);
+        const unit = Number(it.price ?? it.unit_price ?? 0);
+        const lineTotal = Number(it.line_total ?? it.total ?? (Number.isFinite(unit) ? unit * qty : NaN));
+        lines.push(`- ${name} x${qty || 0}  ${money(lineTotal)}`);
+      });
+      lines.push('');
+      lines.push(`Subtotal: ${money(d.subtotal)}`);
+      if (Number(d.discount) > 0) lines.push(`Discount: -${money(d.discount)}`);
+      if (Number(d.delivery_fee ?? d.deliveryFee) > 0) lines.push(`Delivery fee: ${money(d.delivery_fee ?? d.deliveryFee)}`);
+      lines.push(`Total: ${money(d.total ?? d.total_amount)}`);
+      return lines;
+    };
+
+    const buildSimplePdfBytes = (lines) => {
+      const encoder = new TextEncoder();
+      const parts = [];
+      let byteLen = 0;
+      const push = (s) => { parts.push(s); byteLen += encoder.encode(s).length; };
+      const pad10 = (n) => String(n).padStart(10, '0');
+
+      const lineHeight = 16;
+      const left = 50;
+      const top = 800;
+      const contentLines = [];
+      contentLines.push('BT');
+      contentLines.push('/F1 12 Tf');
+      contentLines.push(`${left} ${top} Td`);
+      for (let i = 0; i < lines.length; i++) {
+        const text = pdfEscape(lines[i]);
+        contentLines.push(`(${text}) Tj`);
+        if (i !== lines.length - 1) contentLines.push(`0 -${lineHeight} Td`);
       }
+      contentLines.push('ET');
+      const contentStream = contentLines.join('\n');
+      const contentLen = encoder.encode(contentStream).length;
+
+      const objOffsets = {};
+      push('%PDF-1.4\n');
+
+      const addObj = (num, body) => {
+        objOffsets[num] = byteLen;
+        push(`${num} 0 obj\n${body}\nendobj\n`);
+      };
+
+      addObj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+      addObj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+      addObj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>');
+      addObj(4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+      addObj(5, `<< /Length ${contentLen} >>\nstream\n${contentStream}\nendstream`);
+
+      const xrefOffset = byteLen;
+      push('xref\n');
+      push('0 6\n');
+      push('0000000000 65535 f \n');
+      for (let i = 1; i <= 5; i++) {
+        push(`${pad10(objOffsets[i] || 0)} 00000 n \n`);
+      }
+      push('trailer\n');
+      push('<< /Size 6 /Root 1 0 R >>\n');
+      push('startxref\n');
+      push(`${xrefOffset}\n`);
+      push('%%EOF');
+
+      return encoder.encode(parts.join(''));
+    };
+
+    const openPdfBlob = (bytes, filename) => {
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent || '');
+      a.href = url;
+      a.target = '_blank';
+      if (!isIOS) a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
+
+    document.getElementById('downloadPdfBtn').addEventListener('click', async () => {
+      const data = window.__bfInvoiceData;
+      if (!data) {
+        alert('Invoice is still loading. Please try again.');
+        return;
+      }
+      const lines = buildInvoiceLines(data);
+      const bytes = buildSimplePdfBytes(lines);
+      openPdfBlob(bytes, `BakeFlow_Invoice_BF-${orderId}.pdf`);
     });
 
     // Load order details
     async function loadDetails(){
       let data = null;
       let stored = null;
+      // Try localStorage by order ID
       try {
         const storedRaw = localStorage.getItem(`bf_invoice_${orderId}`);
         stored = storedRaw ? JSON.parse(storedRaw) : null;
       } catch (e) {
         stored = null;
       }
+      // Fallback: try latest invoice
+      if (!stored) {
+        try {
+          const latestRaw = localStorage.getItem('bf_invoice_latest');
+          const latest = latestRaw ? JSON.parse(latestRaw) : null;
+          if (latest) stored = latest;
+        } catch (e) {}
+      }
       if (stored) {
         data = stored;
+        // Update order ID display if we got it from stored data
+        if (stored.order_id && orderId === '—') {
+          document.getElementById('orderId').textContent = 'BF-' + stored.order_id;
+        }
       }
+      // Try fetching from API
+      if (orderId !== '—') {
+        try {
+          const res = await fetch('/api/orders/' + encodeURIComponent(orderId));
+          if (res.ok) data = await res.json();
+        } catch(e) { /* ignore */ }
+      }
+      // Parse items from URL params if provided
+      let urlItems = [];
       try {
-        const res = await fetch('/api/orders/' + encodeURIComponent(orderId));
-        if (res.ok) data = await res.json();
-      } catch(e) { /* ignore */ }
+        const itemsParam = qs.get('items');
+        if (itemsParam) urlItems = JSON.parse(itemsParam);
+      } catch (e) {}
+
       const paramNumber = (key) => {
         const raw = qs.get(key);
         if (raw === null || raw === '') return null;
         const num = Number(raw);
         return Number.isFinite(num) ? num : null;
       };
-      if (!data || !Array.isArray(data.items)){
+      if (!data || !Array.isArray(data.items) || data.items.length === 0){
         data = {
           created_at: stored?.created_at || new Date().toISOString(),
           customer_name: qs.get('customer_name') || stored?.customer_name || 'Customer',
@@ -238,7 +353,7 @@
           delivery_fee: stored?.delivery_fee ?? paramNumber('delivery_fee'),
           total: stored?.total ?? paramNumber('total') ?? paramNumber('total_amount'),
           promotions: stored?.promotions || [],
-          items: stored?.items || []
+          items: stored?.items || urlItems
         };
       } else {
         const subtotalParam = paramNumber('subtotal');
@@ -255,6 +370,7 @@
     }
 
     function renderDetails(d){
+      window.__bfInvoiceData = d;
       const formatMoney = (value) => {
         const num = Number(value);
         return Number.isFinite(num) ? `$${num.toFixed(2)}` : '—';

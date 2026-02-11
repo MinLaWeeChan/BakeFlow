@@ -101,6 +101,7 @@ func SetupRoutes() http.Handler {
 
 	// Orders API
 	router.HandleFunc("/orders", controllers.GetOrders).Methods("GET")
+	router.HandleFunc("/api/orders/{id:[0-9]+}", controllers.GetOrderByID).Methods("GET", "OPTIONS")
 
 	// Chat Order API (from webview)
 	router.HandleFunc("/api/chat/orders", controllers.CreateChatOrder).Methods("POST", "OPTIONS")
@@ -181,6 +182,14 @@ func SetupRoutes() http.Handler {
 	// Promotions API
 	router.HandleFunc("/promotions/active", controllers.GetActivePromotions).Methods("GET", "OPTIONS")
 	router.HandleFunc("/checkout", controllers.CalculateCheckout).Methods("POST", "OPTIONS")
+
+	// Preorder Banner API
+	router.HandleFunc("/api/preorder-settings", controllers.GetPreorderSettings).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/preorder-settings", controllers.AdminGetPreorderSettings).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/preorder-settings", controllers.AdminUpdatePreorderSettings).Methods("PUT", "OPTIONS")
+	router.HandleFunc("/api/preorder-products/{id:[0-9]+}/settings", controllers.GetPreorderProductSettings).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/products/{id:[0-9]+}/preorder-settings", controllers.AdminGetPreorderProductSettings).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/products/{id:[0-9]+}/preorder-settings", controllers.AdminUpdatePreorderProductSettings).Methods("PUT", "OPTIONS")
 
 	// Admin Promotions API
 	router.HandleFunc("/api/admin/promotions", controllers.AdminGetAllPromotions).Methods("GET", "OPTIONS")

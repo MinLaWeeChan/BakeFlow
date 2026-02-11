@@ -23,6 +23,10 @@ async function init() {
     await Promise.resolve(renderSavedOrders());
     renderPlacesBar();
     renderRecurringOrders();
+
+    if (typeof initPreorderUI === 'function') {
+        initPreorderUI();
+    }
     
     // Initialize Lucide icons
     if (window.lucide && window.lucide.createIcons) {
@@ -156,7 +160,10 @@ async function init() {
     if (params.get('schedule') === '1') {
         setTimeout(() => {
             const d = new Date();
-            document.getElementById('scheduleDate').value = d.toISOString().slice(0,10);
+            const dateEl = document.getElementById('scheduleDate');
+            dateEl.min = '';
+            dateEl.max = '';
+            dateEl.value = d.toISOString().slice(0,10);
             document.getElementById('scheduleTime').value = '';
             openSheet('scheduleSheet');
         }, 300);
@@ -187,6 +194,15 @@ document.addEventListener('DOMContentLoaded', () => {
     initPlacesSheet();
     initScheduleSheet();
     initRecurringSheet();
+
+    // Clear inline validation errors on input
+    document.addEventListener('input', e => {
+        if (e.target.classList.contains('invalid')) {
+            e.target.classList.remove('invalid');
+            const errEl = document.getElementById(e.target.id + 'Error');
+            if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+        }
+    });
     
     // Wire checkout and back buttons
     document.getElementById('barCheckout').addEventListener('click', openDeliveryForm);

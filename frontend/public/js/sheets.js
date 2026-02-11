@@ -26,11 +26,15 @@ function closeSheets() {
 
 function showToast(msg, type) {
     const t = document.getElementById('toast');
+    // Reset classes first for re-trigger
+    t.classList.remove('show', 'success', 'warning');
+    void t.offsetWidth; // force reflow so transition re-triggers
     t.textContent = msg;
-    t.className = 'toast show';
+    t.classList.add('show');
     if (type === 'success') t.classList.add('success');
     if (type === 'warning') t.classList.add('warning');
-    setTimeout(() => t.classList.remove('show', 'success', 'warning'), 2000);
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => t.classList.remove('show', 'success', 'warning'), 2500);
 }
 
 function initSheetListeners() {

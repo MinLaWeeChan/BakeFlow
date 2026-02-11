@@ -8,9 +8,6 @@ let geo = null;
 let map = null;
 let marker = null;
 let phoneInputInitialized = false;
-let errorModalInitialized = false;
-let errorModalLastFocus = null;
-let errorModalKeyHandler = null;
 
 // ========== Delivery Form ==========
 function openDeliveryForm() {
@@ -25,6 +22,19 @@ function openDeliveryForm() {
     document.getElementById('deliveryForm').classList.add('active');
     document.getElementById('cartBar').style.display = 'none';
     document.getElementById('orderBar').style.display = 'block';
+
+    // Update button text for pending custom cake orders
+    const placeBtn = document.getElementById('placeOrderBtn');
+    if (placeBtn && window.__pendingPreorder) {
+        placeBtn.innerHTML = '<i data-lucide="check-circle"></i><span>Place Custom Cake Order</span>';
+    } else if (placeBtn) {
+        placeBtn.innerHTML = '<i data-lucide="check-circle"></i><span>Place Order</span>';
+    }
+
+    // Clear any stale error banners (e.g. "cart is empty" from regular flow)
+    const errBanner = document.getElementById('errorBanner');
+    if (errBanner) errBanner.style.display = 'none';
+
     adjustSafePadding();
     if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
     updatePhoneUi();
@@ -35,6 +45,7 @@ function backToCart() {
     document.querySelectorAll('.section').forEach(s => s.style.display = '');
     document.getElementById('cartBar').style.display = 'block';
     document.getElementById('orderBar').style.display = 'none';
+    window.__pendingPreorder = null; // clear pending custom cake if user goes back
     renderSavedOrders();
     renderPlacesBar();
     renderRecurringOrders();
@@ -43,8 +54,13 @@ function backToCart() {
 
 function selectDeliveryType(type) {
     deliveryType = type;
-    document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
-    document.querySelector(`[data-type="${type}"]`).classList.add('selected');
+    document.querySelectorAll('.radio-option').forEach(opt => {
+        opt.classList.remove('selected');
+        opt.setAttribute('aria-checked', 'false');
+    });
+    const sel = document.querySelector(`[data-type="${type}"]`);
+    sel.classList.add('selected');
+    sel.setAttribute('aria-checked', 'true');
     
     const addressGroup = document.getElementById('addressGroup');
     const addressInput = document.getElementById('customerAddress');
@@ -264,103 +280,24 @@ function appendNote(text) {
 
 function showError(msg) {
     const b = document.getElementById('errorBanner');
-    if (b) {
-        b.textContent = msg;
-        b.style.display = 'block';
-        setTimeout(() => { b.style.display = 'none'; }, 3000);
-    }
-    showErrorModal(msg);
+    b.innerHTML = '';
+    const text = document.createElement('span');
+    text.textContent = msg;
+    b.appendChild(text);
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'error-banner-close';
+    closeBtn.type = 'button';
+    closeBtn.setAttribute('aria-label', 'Dismiss');
+    closeBtn.innerHTML = '\u2715';
+    closeBtn.onclick = () => { b.style.display = 'none'; };
+    b.appendChild(closeBtn);
+    b.style.display = 'block';
+    clearTimeout(window._errorBannerTimer);
+    window._errorBannerTimer = setTimeout(() => { b.style.display = 'none'; }, 8000);
 }
 
 function getDeliveryType() { return deliveryType; }
 function getGeo() { return geo; }
-
-function initErrorModal() {
-    if (errorModalInitialized) return;
-    const modal = document.getElementById('errorModal');
-    if (!modal) return;
-    errorModalInitialized = true;
-
-    const backdrop = document.getElementById('bfModalBackdrop');
-    const closeBtn = document.getElementById('bfModalClose');
-    const okBtn = document.getElementById('bfModalOk');
-
-    const close = () => {
-        modal.classList.remove('show');
-        modal.setAttribute('aria-hidden', 'true');
-        document.body.classList.remove('bf-modal-open');
-        if (errorModalKeyHandler) {
-            window.removeEventListener('keydown', errorModalKeyHandler);
-            errorModalKeyHandler = null;
-        }
-        if (errorModalLastFocus && typeof errorModalLastFocus.focus === 'function') {
-            errorModalLastFocus.focus();
-        }
-        errorModalLastFocus = null;
-    };
-
-    if (backdrop) backdrop.addEventListener('click', close);
-    if (closeBtn) closeBtn.addEventListener('click', close);
-    if (okBtn) okBtn.addEventListener('click', close);
-
-    window.__bfCloseErrorModal = close;
-}
-
-function showErrorModal(msg) {
-    initErrorModal();
-    const modal = document.getElementById('errorModal');
-    if (!modal) return;
-
-    const titleEl = document.getElementById('bfModalTitle');
-    const textEl = document.getElementById('bfModalText');
-    const iconEl = document.getElementById('bfModalIcon');
-    const cardEl = modal.querySelector('.bf-modal-card');
-
-    const m = (msg || '').toString().trim();
-    const lower = m.toLowerCase();
-    let title = 'Error';
-    let icon = 'alert-triangle';
-
-    if (lower.includes("can’t be modified") || lower.includes("can't be modified") || lower.includes('order_locked') || lower.includes('already being prepared')) {
-        title = 'Order locked';
-        icon = 'lock';
-    } else if (lower.includes('insufficient') || lower.includes('out of stock') || lower.includes('no longer available')) {
-        title = 'Unavailable items';
-        icon = 'shopping-bag';
-    } else if (lower.includes('phone') && lower.includes('09')) {
-        title = 'Invalid phone number';
-        icon = 'phone-off';
-    } else if (lower.includes('location') || lower.includes('address')) {
-        title = 'Location issue';
-        icon = 'map-pin-off';
-    }
-
-    if (titleEl) titleEl.textContent = title;
-    if (textEl) textEl.textContent = m || 'Something went wrong. Please try again.';
-    if (iconEl) {
-        iconEl.innerHTML = `<i data-lucide="${icon}"></i>`;
-        if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
-    }
-
-    errorModalLastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    modal.classList.add('show');
-    modal.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('bf-modal-open');
-
-    if (errorModalKeyHandler) {
-        window.removeEventListener('keydown', errorModalKeyHandler);
-    }
-    errorModalKeyHandler = (e) => {
-        if (e.key === 'Escape') {
-            if (window.__bfCloseErrorModal) window.__bfCloseErrorModal();
-        }
-    };
-    window.addEventListener('keydown', errorModalKeyHandler);
-
-    if (cardEl && typeof cardEl.focus === 'function') {
-        setTimeout(() => cardEl.focus(), 0);
-    }
-}
 
 // Export
 window.openDeliveryForm = openDeliveryForm;

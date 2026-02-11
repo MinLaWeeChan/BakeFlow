@@ -26,6 +26,45 @@
     gap: var(--space-sm);
 }
 
+.cart-bar .preorder-ad {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 18px;
+}
+
+.cart-bar .preorder-ad-handle {
+    display: none;
+}
+
+.cart-bar .preorder-ad-close {
+    right: 10px;
+    top: 10px;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+}
+
+.cart-bar .preorder-ad-media {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+}
+
+.cart-bar .preorder-ad-title {
+    font-size: 14px;
+}
+
+.cart-bar .preorder-ad-subtitle {
+    font-size: 12px;
+}
+
+.cart-bar .preorder-ad-cta {
+    margin-top: 8px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+}
+
 /* ========== Main Row ========== */
 .bar-main {
     display: flex;

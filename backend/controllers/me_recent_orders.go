@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func MeRecentOrders(w http.ResponseWriter, r *http.Request) {
@@ -55,11 +56,27 @@ func MeActiveOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only return non-custom (regular) active orders so custom cake orders
+	// don't block the regular cart flow
 	statuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
-	order, err := models.GetLatestOrderBySenderIDAndStatuses(psid, statuses)
+	allOrders, err := models.GetAllOrdersBySenderIDAndStatuses(psid, statuses)
 	if err != nil {
 		http.Error(w, "failed to load active order", http.StatusInternalServerError)
 		return
+	}
+
+	// Find the latest non-custom, non-scheduled order
+	// Scheduled orders are independent — they shouldn't block "order now"
+	var order *models.Order
+	for _, o := range allOrders {
+		if isCustomOrder(o.ID) {
+			continue
+		}
+		if strings.ToLower(strings.TrimSpace(o.Status)) == "scheduled" {
+			continue
+		}
+		order = o
+		break
 	}
 
 	editable := false

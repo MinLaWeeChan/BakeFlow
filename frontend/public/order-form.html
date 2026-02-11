@@ -117,7 +117,7 @@
         <div class="divider" id="sectionDivider" style="display:none;"></div>
 
         <!-- Products Section -->
-        <section class="section">
+        <section class="section" id="productsSection">
             <div class="products-header">
                 <span class="products-title">
                     <i data-lucide="cake"></i>
@@ -133,9 +133,10 @@
                        id="productSearch" 
                        placeholder="Search for cakes, pastries..." 
                        oninput="handleSearchInput(this.value)"
-                       autocomplete="off">
-                <i data-lucide="search" class="products-search-icon"></i>
-                <button class="products-search-clear" onclick="handleSearchInput(''); document.getElementById('productSearch').value = '';" type="button">
+                       autocomplete="off"
+                       aria-label="Search products">
+                <i data-lucide="search" class="products-search-icon" aria-hidden="true"></i>
+                <button class="products-search-clear" onclick="handleSearchInput(''); document.getElementById('productSearch').value = '';" type="button" aria-label="Clear search">
                     <i data-lucide="x"></i>
                 </button>
             </div>
@@ -183,6 +184,23 @@
         <!-- Sticky Cart Bar -->
         <div class="cart-bar" id="cartBar">
             <div class="bar-inner">
+                <!-- Preorder Banner -->
+                <div class="preorder-ad" id="preorderAd" style="display:none;">
+                    <div class="preorder-ad-handle"></div>
+                    <button class="preorder-ad-close" id="preorderAdClose" type="button" aria-label="Close">
+                        <i data-lucide="x"></i>
+                    </button>
+                    <div class="preorder-ad-inner" id="preorderAdOpen" role="button" tabindex="0">
+                        <div class="preorder-ad-media">
+                            <img class="preorder-ad-img" src="https://images.unsplash.com/photo-1603532648955-039310d9ed75?w=220&h=220&fit=crop" alt="Custom cake" loading="lazy" />
+                        </div>
+                        <div class="preorder-ad-content">
+                            <div class="preorder-ad-title" id="preorderAdTitle">🎂 Custom Cakes</div>
+                            <div class="preorder-ad-subtitle" id="preorderAdSubtitle">Design your cake · Made to order</div>
+                            <button class="preorder-ad-cta" id="preorderCustomizeBtn" type="button">Customize</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="bar-main">
                     <div class="bar-summary" onclick="openCartItemsSheet()" style="cursor: pointer;">
                         <div class="bar-summary-left">
@@ -210,6 +228,8 @@
                         Checkout
                     </button>
                 </div>
+                <!-- Order Type Badge -->
+                <div id="orderTypeBadge" class="order-type-badge" style="display:none;"></div>
                 <div class="bar-savings" id="barSavings" style="display:none;"></div>
                 <div class="secondary-row">
                     <button class="secondary-btn" id="barSave" aria-label="Save order">
@@ -254,6 +274,7 @@
                     <i class="input-icon" data-lucide="user"></i>
                     <input type="text" class="form-input" id="customerName" placeholder="What should we call you?" required>
                 </div>
+                <div id="customerNameError" class="field-error" style="display:none;"></div>
             </div>
             
             <div class="form-group">
@@ -286,11 +307,11 @@
                 <label class="form-label">
                     <i data-lucide="truck"></i> How would you like it?
                 </label>
-                <div class="radio-group">
-                    <div class="radio-option" data-type="pickup" onclick="selectDeliveryType('pickup')">
+                <div class="radio-group" role="radiogroup" aria-label="Delivery method">
+                    <div class="radio-option" data-type="pickup" onclick="selectDeliveryType('pickup')" role="radio" tabindex="0" aria-checked="false">
                         <i data-lucide="store"></i> Pick Up
                     </div>
-                    <div class="radio-option" data-type="delivery" onclick="selectDeliveryType('delivery')">
+                    <div class="radio-option" data-type="delivery" onclick="selectDeliveryType('delivery')" role="radio" tabindex="0" aria-checked="false">
                         <i data-lucide="bike"></i> Delivery
                     </div>
                 </div>
@@ -304,6 +325,7 @@
                     <i class="input-icon" data-lucide="map-pin"></i>
                     <input type="text" class="form-input" id="customerAddress" placeholder="Where should we deliver?">
                 </div>
+                <div id="customerAddressError" class="field-error" style="display:none;"></div>
                 <div id="savedPlacesBar" class="places-bar" style="display:none;">
                     <div class="section-header">
                         <div class="section-title">
@@ -375,7 +397,7 @@
         <div id="sheetBackdrop" class="sheet-backdrop"></div>
 
         <!-- Save Order Sheet -->
-        <div id="saveSheet" class="sheet">
+        <div id="saveSheet" class="sheet" role="dialog" aria-modal="true" aria-label="Save this order">
             <div class="sheet-box">
                 <div class="sheet-handle"></div>
                 <div class="sheet-title" style="justify-content:center;">
@@ -438,8 +460,138 @@
             </div>
         </div>
 
+        <!-- Preorder Sheet -->
+        <div id="preorderSheet" class="sheet preorder-sheet">
+            <div class="sheet-box">
+                <div class="sheet-handle"></div>
+                <div class="sheet-title">
+                    <i data-lucide="cake"></i>
+                    <span>Custom Cake Order</span>
+                </div>
+
+                <!-- Order window banner -->
+                <div class="preorder-window-banner" id="preorderWindowBanner">
+                    <span class="preorder-window-icon">🕒</span>
+                    <span id="customCakeNoticeText">Order window: <strong>Available now</strong></span>
+                </div>
+
+                <!-- ═══ CONFIGURE SECTION ═══ -->
+                <div class="preorder-configure-section">
+                    <div class="preorder-section-label">Pick a cake</div>
+                    <div class="preorder-product-section">
+                        <div class="preorder-product-header">
+                            <div class="preorder-product-count" id="preorderProductCount"></div>
+                        </div>
+                        <div class="preorder-product-list" id="preorderProductList"></div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+                        <div class="preorder-field-group">
+                            <div class="preorder-field-label">Flavor</div>
+                            <div class="input-wrap">
+                                <select class="form-input" id="preorderFlavor" style="font-size:13px;">
+                                    <option value="">Select</option>
+                                    <option value="Vanilla">Vanilla</option>
+                                    <option value="Chocolate">Chocolate</option>
+                                    <option value="Red Velvet">Red Velvet</option>
+                                    <option value="Matcha">Matcha</option>
+                                    <option value="Strawberry">Strawberry</option>
+                                    <option value="Taro">Taro</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="preorder-field-group">
+                            <div class="preorder-field-label">Size</div>
+                            <div class="preorder-option-grid" id="preorderSizeOptions">
+                                <label class="preorder-option-chip"><input type="radio" name="preorderSize" value="6 inch"><span>6&quot;</span></label>
+                                <label class="preorder-option-chip"><input type="radio" name="preorderSize" value="8 inch"><span>8&quot;</span></label>
+                                <label class="preorder-option-chip"><input type="radio" name="preorderSize" value="10 inch"><span>10&quot;</span></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+                        <div class="preorder-field-group">
+                            <div class="preorder-field-label">Layers</div>
+                            <div class="preorder-option-grid" id="preorderLayerOptions">
+                                <label class="preorder-option-chip"><input type="radio" name="preorderLayer" value="1 layer"><span>1</span></label>
+                                <label class="preorder-option-chip"><input type="radio" name="preorderLayer" value="2 layers"><span>2</span></label>
+                                <label class="preorder-option-chip"><input type="radio" name="preorderLayer" value="3 layers"><span>3</span></label>
+                            </div>
+                        </div>
+                        <div class="preorder-field-group">
+                            <div class="preorder-field-label">Cream</div>
+                            <div class="preorder-option-grid" id="preorderCreamOptions">
+                                <label class="preorder-option-chip"><input type="radio" name="preorderCream" value="Buttercream"><span>Butter</span></label>
+                                <label class="preorder-option-chip"><input type="radio" name="preorderCream" value="Fresh cream"><span>Fresh</span></label>
+                                <label class="preorder-option-chip"><input type="radio" name="preorderCream" value="Cream cheese"><span>Cheese</span></label>
+                                <label class="preorder-option-chip"><input type="radio" name="preorderCream" value="Chocolate ganache"><span>Ganache</span></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+                        <div class="preorder-field-group">
+                            <div class="preorder-field-label">Cake message</div>
+                            <input type="text" class="form-input" id="preorderMessage" placeholder="e.g., Happy Birthday!" maxlength="60" style="font-size:13px;">
+                        </div>
+                        <div class="preorder-field-group">
+                            <div class="preorder-field-label">Notes (optional)</div>
+                            <input type="text" class="form-input" id="preorderNotes" placeholder="Design ideas, colors..." style="font-size:13px;">
+                        </div>
+                    </div>
+
+                    <!-- ADD TO CART — secondary outlined button -->
+                    <button class="preorder-add-btn" id="preorderAddCakeBtn" type="button">
+                        <span class="preorder-add-btn-icon">+</span>
+                        <span id="preorderAddCakeText">Add another cake</span>
+                    </button>
+                </div>
+
+                <!-- ═══ CART SECTION ═══ -->
+                <div id="customCakeCartSection" class="preorder-cart-section" style="display:none;">
+                    <div class="preorder-cart-header">
+                        <div class="preorder-cart-title">🛒 Your Cart</div>
+                        <div class="preorder-cart-badge" id="customCakeCartCount">0 cakes</div>
+                    </div>
+
+                    <div id="customCakeCartList" class="preorder-cart-list"></div>
+
+                    <div class="preorder-cart-total-row">
+                        <span class="preorder-cart-total-label">Total</span>
+                        <span class="preorder-cart-total-price" id="customCakeCartTotal">$0.00</span>
+                    </div>
+                </div>
+
+                <!-- ═══ SCHEDULE SECTION — above primary CTA ═══ -->
+                <div id="customCakeScheduleSection" class="preorder-schedule-card" style="display:none;">
+                    <div class="preorder-schedule-card-label">📅 Pick up date &amp; time</div>
+                    <div class="preorder-schedule-inputs">
+                        <div class="input-wrap" style="flex:1;">
+                            <i class="input-icon" data-lucide="calendar"></i>
+                            <input type="date" class="form-input" id="preorderDate">
+                        </div>
+                        <div class="input-wrap" style="flex:1;">
+                            <i class="input-icon" data-lucide="clock"></i>
+                            <input type="time" class="form-input" id="preorderTime">
+                        </div>
+                    </div>
+                    <div class="preorder-schedule-hint">Open 8 AM – 8 PM · Must be at least 1 day ahead</div>
+                </div>
+
+                <!-- ═══ BOTTOM ACTIONS ═══ -->
+                <div class="preorder-bottom-actions">
+                    <button class="preorder-cancel-btn" id="preorderCancel" type="button">Cancel</button>
+                    <button class="preorder-order-btn" id="preorderSubmitBtn" type="button" style="display:none;">
+                        <i data-lucide="check" style="width:18px;height:18px;"></i>
+                        <span id="preorderSubmitText">Order Cakes</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Schedule Sheet -->
-        <div id="scheduleSheet" class="sheet">
+        <div id="scheduleSheet" class="sheet" role="dialog" aria-modal="true" aria-label="Schedule order">
             <div class="sheet-box">
                 <div class="sheet-handle"></div>
                 <div class="sheet-title">
@@ -459,13 +611,14 @@
                 <div class="hint">We're open 8:00 AM – 8:00 PM daily</div>
                 <div class="sheet-row">
                     <button class="sheet-btn" id="scheduleCancel">Cancel</button>
+                    <button class="sheet-btn danger" id="scheduleRemove" style="display:none;">Remove</button>
                     <button class="sheet-btn primary" id="scheduleConfirm">Apply</button>
                 </div>
             </div>
         </div>
 
         <!-- Recurring Sheet -->
-        <div id="recurringSheet" class="sheet">
+        <div id="recurringSheet" class="sheet" role="dialog" aria-modal="true" aria-label="Recurring order">
             <div class="sheet-box">
                 <div class="sheet-handle"></div>
                 <div class="sheet-title">
@@ -518,7 +671,7 @@
         </div>
 
         <!-- Places Sheet -->
-        <div id="placesSheet" class="sheet">
+        <div id="placesSheet" class="sheet" role="dialog" aria-modal="true" aria-label="Saved places">
             <div class="sheet-box">
                 <div class="sheet-handle"></div>
                 <div class="sheet-title">
@@ -546,7 +699,7 @@
             </div>
         </div>
 
-        <div id="dealsSheet" class="sheet">
+        <div id="dealsSheet" class="sheet" role="dialog" aria-modal="true" aria-label="Available deals">
             <div class="sheet-box">
                 <div class="sheet-handle"></div>
                 <div class="sheet-title">
@@ -626,7 +779,7 @@
         </div>
 
         <!-- Cart Items Sheet (for viewing/editing cart items with notes) -->
-        <div id="cartItemsSheet" class="sheet">
+        <div id="cartItemsSheet" class="sheet" role="dialog" aria-modal="true" aria-label="Cart items">
             <div class="sheet-box">
                 <div class="sheet-handle"></div>
                 <div class="sheet-title">
@@ -645,7 +798,7 @@
         </div>
 
         <!-- Toast -->
-        <div id="toast" class="toast"></div>
+        <div id="toast" class="toast" role="alert" aria-live="polite" aria-atomic="true"></div>
 
         <div id="errorModal" class="bf-modal" aria-hidden="true">
             <div class="bf-modal-backdrop" id="bfModalBackdrop"></div>

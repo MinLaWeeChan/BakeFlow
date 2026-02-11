@@ -251,7 +251,6 @@ func showOrderTracking(userID string, orderID int) {
 		order = &orders[0]
 	}
 
-	// Status emoji and message
 	statusInfo := map[string]struct {
 		emoji   string
 		message string
@@ -259,16 +258,18 @@ func showOrderTracking(userID string, orderID int) {
 		"pending":    {"⏳", "Your order is being reviewed"},
 		"confirmed":  {"✅", "Your order has been confirmed"},
 		"preparing":  {"👨‍🍳", "Your order is being prepared"},
-		"ready":      {"📦", "Your order is ready for pickup"},
-		"delivering": {"🚗", "Your order is on the way"},
+		"ready":      {"📦", "Your order is ready for pickup or delivery"},
+		"delivering": {"🚗", "Your order is out for delivery"},
 		"delivered":  {"✅", "Your order has been delivered"},
 		"cancelled":  {"❌", "This order was cancelled"},
 		"scheduled":  {"📅", "Your order is scheduled"},
 	}
 
-	info, ok := statusInfo[order.Status]
+	statusKey := strings.ToLower(strings.TrimSpace(order.Status))
+	info, ok := statusInfo[statusKey]
 	if !ok {
 		info = statusInfo["pending"]
+		statusKey = "pending"
 	}
 
 	// Build items list
@@ -281,7 +282,55 @@ func showOrderTracking(userID string, orderID int) {
 		itemsList += fmt.Sprintf("  • %s × %d\n", item.Product, item.Quantity)
 	}
 
-	// Build tracking message
+	steps := []string{"pending", "preparing", "ready", "delivered"}
+	stepLabels := map[string]string{
+		"pending":    "Pending",
+		"preparing":  "Preparing",
+		"ready":      "Ready",
+		"delivered":  "Delivered",
+		"delivering": "Out for delivery",
+	}
+	if order.DeliveryType == "delivery" {
+		steps = []string{"pending", "preparing", "delivering", "delivered"}
+	}
+
+	stepStatus := "pending"
+	switch statusKey {
+	case "pending", "confirmed", "scheduled":
+		stepStatus = "pending"
+	case "preparing":
+		stepStatus = "preparing"
+	case "ready", "delivering":
+		if order.DeliveryType == "delivery" {
+			stepStatus = "delivering"
+		} else {
+			stepStatus = "ready"
+		}
+	case "delivered":
+		stepStatus = "delivered"
+	}
+
+	currentStepIndex := 0
+	for i, s := range steps {
+		if s == stepStatus {
+			currentStepIndex = i
+			break
+		}
+	}
+
+	timelineLines := make([]string, 0, len(steps))
+	for i, s := range steps {
+		icon := "○"
+		if i < currentStepIndex {
+			icon = "✅"
+		} else if i == currentStepIndex {
+			icon = "🟡"
+		}
+		label := stepLabels[s]
+		timelineLines = append(timelineLines, fmt.Sprintf("%s %s", icon, label))
+	}
+	progress := strings.Join(timelineLines, "\n")
+
 	msg := fmt.Sprintf("📍 *Order Tracking*\n\n"+
 		"Order #BF-%d\n"+
 		"━━━━━━━━━━━━━━━\n\n"+
@@ -289,13 +338,15 @@ func showOrderTracking(userID string, orderID int) {
 		"%s\n\n"+
 		"*Items:*\n%s\n"+
 		"*Total:* $%.2f\n"+
-		"*Type:* %s",
+		"*Type:* %s\n\n"+
+		"*Progress:*\n%s",
 		order.ID,
-		info.emoji, strings.Title(order.Status),
+		info.emoji, strings.Title(statusKey),
 		info.message,
 		itemsList,
 		order.TotalAmount,
-		strings.Title(order.DeliveryType))
+		strings.Title(order.DeliveryType),
+		progress)
 
 	if order.DeliveryType == "delivery" && order.Address != "" {
 		msg += fmt.Sprintf("\n*Deliver to:* %s", order.Address)
@@ -303,9 +354,8 @@ func showOrderTracking(userID string, orderID int) {
 
 	SendMessage(userID, msg)
 
-	// Add helpful buttons based on status
 	var buttons []Button
-	switch order.Status {
+	switch statusKey {
 	case "delivered":
 		buttons = []Button{
 			{Type: "postback", Title: "⭐ Rate Order", Payload: fmt.Sprintf("RATE_ORDER_%d", order.ID)},
@@ -322,10 +372,9 @@ func showOrderTracking(userID string, orderID int) {
 		}
 	}
 
-	// Send as a card with status
 	SendGenericTemplate(userID, []Element{{
 		Title:    fmt.Sprintf("%s Order #BF-%d", info.emoji, order.ID),
-		Subtitle: fmt.Sprintf("Status: %s\n%s", strings.Title(order.Status), info.message),
+		Subtitle: fmt.Sprintf("Status: %s\n%s", strings.Title(statusKey), info.message),
 		Buttons:  buttons,
 	}})
 }

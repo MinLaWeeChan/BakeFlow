@@ -447,7 +447,9 @@ function renderCartItemsList() {
 
     const unitPriceByProduct = new Map();
     qtyByProduct.forEach((_, pid) => {
-        const product = window.products?.find(p => Number(p.id) === Number(pid));
+        const product = window.getProductById
+            ? window.getProductById(pid)
+            : window.products?.find(p => Number(p.id) === Number(pid));
         unitPriceByProduct.set(pid, Number(product?.price || 0));
     });
 
@@ -503,14 +505,29 @@ function renderCartItemsList() {
         }
     }
 
+    const resolveProduct = (pid, item) => {
+        const found = window.getProductById
+            ? window.getProductById(pid)
+            : (window.products?.find(p => p.id == pid) || null);
+        if (found) return found;
+        const note = String(item?.note || '');
+        const cakeLine = note.split('\n').map(l => l.trim()).find(l => /^cake:\s*/i.test(l));
+        const name = cakeLine ? cakeLine.replace(/^cake:\s*/i, '').trim() : 'Custom Cake';
+        return {
+            id: pid,
+            name: name || 'Custom Cake',
+            price: 0,
+            image_url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=300&h=200&fit=crop'
+        };
+    };
+
     const groups = [];
     const groupMap = new Map();
     cartItems.forEach(it => {
         const pid = Number(it.productId);
         if (!Number.isFinite(pid)) return;
         if (!groupMap.has(pid)) {
-            const product = window.products?.find(p => p.id == pid);
-            if (!product) return;
+            const product = resolveProduct(pid, it);
             const entry = { productId: pid, product, items: [], totalQty: 0 };
             groupMap.set(pid, entry);
             groups.push(entry);

@@ -111,7 +111,10 @@ async function init() {
     if (params.get('schedule') === '1') {
         setTimeout(() => {
             const d = new Date();
-            document.getElementById('scheduleDate').value = d.toISOString().slice(0,10);
+            const dateEl = document.getElementById('scheduleDate');
+            dateEl.min = '';
+            dateEl.max = '';
+            dateEl.value = d.toISOString().slice(0,10);
             document.getElementById('scheduleTime').value = '';
             openSheet('scheduleSheet');
         }, 300);
@@ -691,17 +694,20 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
 function sendOrderChoice(choice, existingOrderID, originalOrderData, name, phone) {
     console.log('📤 Sending order choice:', choice);
     
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user_id') || 'guest';
+    
     const choiceRequest = {
         choice: choice,
         order_id: existingOrderID || 0,
         items: originalOrderData.items,
         customer_name: name,
         delivery_type: originalOrderData.delivery_type,
-        address: originalOrderData.address
+        address: originalOrderData.address,
+        user_id: userId  // Include user_id for fallback authentication
     };
     
     // Get token from URL if it exists
-    const urlParams = new URLSearchParams(window.location.search);
     const tok = urlParams.get('t') || '';
     const tokenParam = tok ? `?t=${encodeURIComponent(tok)}` : '';
     
@@ -728,28 +734,54 @@ function sendOrderChoice(choice, existingOrderID, originalOrderData, name, phone
 }
 
 function completeOrderSubmission(data, phone) {
+    const orderId = data.orderID || data.order_id;
     const orderMsg = data.action === 'items_merged' 
-        ? `Items added to order #${data.orderID}!`
-        : `Order #${data.orderID} placed successfully!`;
+        ? `Items added to order #${orderId}!`
+        : `Order #${orderId} placed successfully!`;
     
-    alert(`✅ ${orderMsg}\n\nWe'll contact you at ${phone} soon.\n\nCheck your Messenger for confirmation.`);
-    
-    if (window.MessengerExtensions) {
-        window.MessengerExtensions.requestCloseBrowser(
-            () => console.log("✅ Webview closed"),
-            (err) => {
-                console.log("❌ Error closing webview:", err);
-                window.location.reload();
-            }
-        );
-    } else {
-        cart = {};
-        deliveryType = null;
-        document.getElementById('customerName').value = '';
-        document.getElementById('customerPhone').value = '';
-        document.getElementById('customerAddress').value = '';
-        document.getElementById('orderNotes').value = '';
-        backToCart();
-        updateCart();
+    showToast(orderMsg, 'success');
+
+    // Store invoice data in localStorage for the receipt page
+    try {
+        const invoiceKey = `bf_invoice_${orderId}`;
+        const dlvType = data.delivery_type || '';
+        const invoiceData = {
+            order_id: orderId,
+            created_at: new Date().toISOString(),
+            customer_name: data.customer_name || '',
+            customer_phone: phone || '',
+            address: dlvType === 'pickup' ? 'Pickup at store' : (data.address || ''),
+            delivery_type: dlvType === 'pickup' ? 'Pick Up' : 'Delivery',
+            payment_status: 'Pay on delivery',
+            subtotal: data.subtotal ?? null,
+            discount: data.discount ?? null,
+            delivery_fee: data.delivery_fee ?? null,
+            total: data.total ?? data.total_amount ?? null,
+            promotions: [],
+            items: [] // Items already on the order will be fetched by the receipt page
+        };
+        localStorage.setItem(invoiceKey, JSON.stringify(invoiceData));
+    } catch (e) {
+        console.log('Failed to store invoice', e);
     }
+
+    // Build receipt URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('user_id') || 'guest';
+    const dlvType = data.delivery_type || '';
+    const params = new URLSearchParams();
+    if (orderId != null) params.set('order_id', orderId);
+    if (userId) params.set('user_id', userId);
+    params.set('delivery_type', dlvType === 'pickup' ? 'Pick Up' : 'Delivery');
+    if (data.customer_name) params.set('customer_name', data.customer_name);
+    if (phone) params.set('customer_phone', phone);
+    if (data.address) params.set('address', dlvType === 'delivery' ? data.address : 'Pickup at store');
+    if (data.subtotal != null) params.set('subtotal', data.subtotal);
+    if (data.discount != null) params.set('discount', data.discount);
+    if (data.delivery_fee != null) params.set('delivery_fee', data.delivery_fee);
+    if (data.total != null) params.set('total', data.total);
+    if (data.total_amount != null) params.set('total_amount', data.total_amount);
+
+    // Redirect to receipt page
+    window.location.href = `/order-details.html?${params.toString()}`;
 }

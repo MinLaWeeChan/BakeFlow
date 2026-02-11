@@ -29,6 +29,8 @@ type ChatOrderRequest struct {
 	Schedule         *ChatOrderSchedule `json:"schedule"`
 	AppliedPromotion *AppliedPromotion  `json:"appliedPromotion,omitempty"`
 	Discount         float64            `json:"discount"`
+	ForceNewOrder    bool               `json:"force_new_order"`
+	OrderType        string             `json:"order_type"`
 }
 
 type ChatOrderItem struct {
@@ -56,6 +58,184 @@ type OrderChoiceRequest struct {
 	Address      string          `json:"address"`
 }
 
+// ─── Order Type System ─────────────────────────────────────
+// Clear separation: regular (ready today) vs custom (2-3 days) vs scheduled (future time)
+
+type OrderType string
+
+const (
+	OrderTypeRegular   OrderType = "regular"   // Normal items, ready same day
+	OrderTypeCustom    OrderType = "custom"    // Custom cakes, need 2-3 days
+	OrderTypeScheduled OrderType = "scheduled" // Regular items at a future time
+)
+
+// requiresAdvanceNotice checks the database to see if a product needs custom work
+func requiresAdvanceNotice(productID int) bool {
+	var requires bool
+	err := configs.DB.QueryRow("SELECT COALESCE(requires_advance_notice, false) FROM products WHERE id = $1", productID).Scan(&requires)
+	return err == nil && requires
+}
+
+// getOrderType determines the order type based on product configuration + schedule
+func getOrderType(req *ChatOrderRequest) OrderType {
+	// If frontend explicitly specifies the order type, use it
+	if req.OrderType == string(OrderTypeCustom) {
+		return OrderTypeCustom
+	}
+
+	// Check if any item requires custom work (product-based, not text-based)
+	for _, item := range req.Items {
+		if item.ProductID > 0 && requiresAdvanceNotice(item.ProductID) {
+			return OrderTypeCustom
+		}
+	}
+
+	// Check if scheduled for future delivery
+	if req.Schedule != nil {
+		dateStr := strings.TrimSpace(req.Schedule.Date)
+		timeStr := strings.TrimSpace(req.Schedule.Time)
+		if dateStr != "" && timeStr != "" {
+			if t, err := time.Parse("2006-01-02T15:04:05", dateStr+"T"+timeStr+":00"); err == nil {
+				if t.After(time.Now().Add(2 * time.Hour)) {
+					return OrderTypeScheduled
+				}
+			}
+		}
+	}
+
+	return OrderTypeRegular
+}
+
+// getChoiceItemsOrderType determines order type from choice items
+func getChoiceItemsOrderType(items []ChatOrderItem) OrderType {
+	for _, item := range items {
+		if item.ProductID > 0 && requiresAdvanceNotice(item.ProductID) {
+			return OrderTypeCustom
+		}
+		// Also detect custom cakes by name pattern (e.g. "Red Velvet Cake — Custom (8)")
+		if strings.Contains(strings.ToLower(item.Name), "custom") {
+			return OrderTypeCustom
+		}
+	}
+	return OrderTypeRegular
+}
+
+// isCustomOrder checks if an existing order contains custom items
+func isCustomOrder(orderID int) bool {
+	// Primary: check order_type column directly (most reliable)
+	var orderType string
+	err := configs.DB.QueryRow("SELECT COALESCE(order_type, '') FROM orders WHERE id = $1", orderID).Scan(&orderType)
+	if err == nil && orderType == string(OrderTypeCustom) {
+		return true
+	}
+
+	// Fallback: check if any item's product has requires_advance_notice
+	var count int
+	err = configs.DB.QueryRow(`
+		SELECT COUNT(*) FROM order_items oi
+		JOIN products p ON p.name = oi.product
+		WHERE oi.order_id = $1 AND COALESCE(p.requires_advance_notice, false) = true
+	`, orderID).Scan(&count)
+	return err == nil && count > 0
+}
+
+// canCreateOrder validates if a user can place a new order (simple Food Panda-style rules)
+// Custom cake orders and regular orders are independent — they don't block each other.
+func canCreateOrder(userID string, orderType OrderType) (bool, string, []*models.Order) {
+	activeStatuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
+	existingOrders, _ := models.GetAllOrdersBySenderIDAndStatuses(userID, activeStatuses)
+
+	switch orderType {
+	case OrderTypeCustom:
+		// Rule: Only 1 custom cake order at a time (ignore regular orders)
+		for _, order := range existingOrders {
+			if isCustomOrder(order.ID) {
+				status := strings.ToLower(strings.TrimSpace(order.Status))
+				if status == "pending" || status == "scheduled" {
+					// Modifiable — let user choose to update or cancel
+					return false, "existing_custom_modifiable", []*models.Order{order}
+				}
+				// Not modifiable (preparing, ready, etc.)
+				return false, "You already have a custom cake order being prepared. Please wait until it completes.", nil
+			}
+		}
+		return true, "", nil
+
+	case OrderTypeScheduled:
+		// Rule: Only 1 scheduled order at a time
+		for _, order := range existingOrders {
+			if strings.ToLower(order.Status) == "scheduled" {
+				return false, "You already have a scheduled order. Please wait until it starts preparing.", nil
+			}
+		}
+		return true, "", nil
+
+	case OrderTypeRegular:
+		// Rule: Can add to pending/preparing regular orders, or create new if none
+		// Skip custom cake orders and scheduled orders — they are independent
+		var modifiableOrders []*models.Order
+		for _, order := range existingOrders {
+			if isCustomOrder(order.ID) {
+				continue
+			}
+			status := strings.ToLower(strings.TrimSpace(order.Status))
+			if status == "scheduled" {
+				continue // scheduled orders don't block "order now"
+			}
+			if status == "pending" || status == "preparing" {
+				modifiableOrders = append(modifiableOrders, order)
+			}
+		}
+		if len(modifiableOrders) > 0 {
+			return false, "add_to_existing", modifiableOrders
+		}
+
+		// Block if non-modifiable active regular orders exist
+		hasBlocking := false
+		for _, order := range existingOrders {
+			if isCustomOrder(order.ID) {
+				continue
+			}
+			status := strings.ToLower(strings.TrimSpace(order.Status))
+			if status == "scheduled" {
+				continue // scheduled orders don't block "order now"
+			}
+			if status == "confirmed" || status == "ready" || status == "delivering" {
+				hasBlocking = true
+				break
+			}
+		}
+		if hasBlocking {
+			return false, "Your current order is being prepared. Please wait for it to complete.", nil
+		}
+		return true, "", nil
+	}
+
+	return true, "", nil
+}
+
+// getOrderTypeLabel returns a user-friendly label for the order type
+func getOrderTypeLabel(orderType OrderType) string {
+	switch orderType {
+	case OrderTypeCustom:
+		return "🎂 Custom Cake Order (2-3 days preparation)"
+	case OrderTypeScheduled:
+		return "⏰ Scheduled Order (future delivery)"
+	case OrderTypeRegular:
+		return "🛒 Regular Order (ready today)"
+	}
+	return ""
+}
+
+// Legacy compatibility aliases
+func isPreorderText(value string) bool {
+	return strings.Contains(strings.ToLower(value), "preorder")
+}
+
+func isPreorderOrderID(orderID int) bool {
+	return isCustomOrder(orderID)
+}
+
 // HandleOrderChoice processes the user's decision to add to existing or create new order
 func HandleOrderChoice(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -63,28 +243,60 @@ func HandleOrderChoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify webview token
-	tok := strings.TrimSpace(r.URL.Query().Get("t"))
-	if tok == "" {
-		http.Error(w, "missing auth token", http.StatusUnauthorized)
-		return
-	}
-	psid, errTok := VerifyWebviewToken(tok)
-	if errTok != nil {
-		http.Error(w, "invalid auth token", http.StatusUnauthorized)
-		return
-	}
-
 	var req OrderChoiceRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("❌ HandleOrderChoice: Failed to decode request: %v", err)
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Use the verified user ID from token, not from request body
+	log.Printf("📥 HandleOrderChoice: Received request - user_id=%s, choice=%s, order_id=%d", req.UserID, req.Choice, req.OrderID)
+
+	tok := strings.TrimSpace(r.URL.Query().Get("t"))
+	psid := ""
+	if tok != "" {
+		log.Printf("🔑 HandleOrderChoice: Verifying token (length=%d)", len(tok))
+		if verified, errTok := VerifyWebviewToken(tok); errTok == nil {
+			psid = verified
+			log.Printf("✅ HandleOrderChoice: Token verified, psid=%s", psid)
+		} else {
+			log.Printf("⚠️  HandleOrderChoice: Token verification failed: %v", errTok)
+		}
+	} else {
+		log.Printf("⚠️  HandleOrderChoice: No token provided in URL")
+	}
+	if psid == "" {
+		log.Printf("🔄 HandleOrderChoice: Trying user_id fallback: '%s'", req.UserID)
+		if isValidMessengerRecipientID(req.UserID) {
+			log.Printf("✅ HandleOrderChoice: user_id is valid, using as psid: %s", req.UserID)
+			psid = req.UserID
+		} else {
+			log.Printf("❌ HandleOrderChoice: user_id '%s' is not a valid Messenger ID", req.UserID)
+			http.Error(w, "invalid auth token", http.StatusUnauthorized)
+			return
+		}
+	}
+
 	userID := psid
 
 	choice := strings.ToLower(strings.TrimSpace(req.Choice))
+	itemOrderType := getChoiceItemsOrderType(req.Items)
+
+	// Block creating new custom order if one already exists
+	if choice == "new_order" && itemOrderType == OrderTypeCustom {
+		canOrder, reason, _ := canCreateOrder(userID, OrderTypeCustom)
+		if !canOrder {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success":    false,
+				"error":      "custom_order_exists",
+				"message":    reason,
+				"order_type": string(OrderTypeCustom),
+			})
+			return
+		}
+	}
 
 	if choice == "add_to_existing" {
 		// Add items to existing order with smart merging
@@ -92,15 +304,207 @@ func HandleOrderChoice(w http.ResponseWriter, r *http.Request) {
 	} else if choice == "new_order" {
 		// Create a new order (treat as a fresh order)
 		createNewOrderAfterChoice(w, userID, req)
+	} else if choice == "update_custom" {
+		// Replace items in existing custom order
+		updateCustomOrder(w, userID, req)
+	} else if choice == "cancel_custom" {
+		// Cancel existing custom order so user can place a new one
+		cancelCustomOrder(w, userID, req)
 	} else {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
 			"error":   "invalid_choice",
-			"message": "Choice must be 'add_to_existing' or 'new_order'",
+			"message": "Invalid choice",
 		})
 	}
+}
+
+// updateCustomOrder replaces items in an existing custom cake order
+func updateCustomOrder(w http.ResponseWriter, userID string, req OrderChoiceRequest) {
+	orderID := req.OrderID
+	if orderID <= 0 {
+		http.Error(w, "missing order_id", http.StatusBadRequest)
+		return
+	}
+
+	existingOrder, err := models.GetOrderByID(orderID)
+	if err != nil || existingOrder == nil {
+		http.Error(w, "order not found", http.StatusNotFound)
+		return
+	}
+	if strings.TrimSpace(existingOrder.SenderID) != "" && strings.TrimSpace(existingOrder.SenderID) != strings.TrimSpace(userID) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "order_access_denied",
+			"message": "You can only modify your own orders.",
+		})
+		return
+	}
+
+	status := strings.ToLower(strings.TrimSpace(existingOrder.Status))
+	if status != "pending" && status != "scheduled" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "order_not_modifiable",
+			"message": "This order can no longer be modified.",
+		})
+		return
+	}
+
+	// Delete old items
+	_, err = configs.DB.Exec(`DELETE FROM order_items WHERE order_id = $1`, orderID)
+	if err != nil {
+		log.Printf("❌ updateCustomOrder: failed to delete old items: %v", err)
+		http.Error(w, "failed to update order", http.StatusInternalServerError)
+		return
+	}
+
+	// Insert new items
+	var subtotal float64
+	totalItems := 0
+	for _, item := range req.Items {
+		_, err = configs.DB.Exec(`
+			INSERT INTO order_items (order_id, product, quantity, price, note, image_url, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		`, orderID, item.Name, item.Qty, item.Price, item.Note, item.ImageURL)
+		if err != nil {
+			log.Printf("⚠️  updateCustomOrder: failed to insert item %s: %v", item.Name, err)
+		}
+		subtotal += item.Price * float64(item.Qty)
+		totalItems += item.Qty
+	}
+
+	// Update order totals and customer info
+	customerName := strings.TrimSpace(req.CustomerName)
+	if customerName == "" {
+		customerName = existingOrder.CustomerName
+	}
+	deliveryType := strings.TrimSpace(req.DeliveryType)
+	if deliveryType == "" {
+		deliveryType = existingOrder.DeliveryType
+	}
+	address := strings.TrimSpace(req.Address)
+	if address == "" {
+		address = existingOrder.Address
+	}
+
+	_, err = configs.DB.Exec(`
+		UPDATE orders
+		SET total_items = $1, subtotal = $2, total_amount = $2,
+		    customer_name = $3, delivery_type = $4, address = $5
+		WHERE id = $6
+	`, totalItems, subtotal, customerName, deliveryType, address, orderID)
+	if err != nil {
+		log.Printf("⚠️  updateCustomOrder: failed to update order totals: %v", err)
+	}
+
+	log.Printf("✅ Custom order #%d updated: %d items, $%.2f", orderID, totalItems, subtotal)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":       true,
+		"orderID":       orderID,
+		"order_id":      orderID,
+		"message":       fmt.Sprintf("✅ Custom order #BF-%d updated!", orderID),
+		"action":        "custom_order_updated",
+		"subtotal":      subtotal,
+		"total":         subtotal,
+		"total_amount":  subtotal,
+		"delivery_fee":  0,
+		"discount":      0,
+		"delivery_type": deliveryType,
+		"address":       address,
+		"customer_name": customerName,
+	})
+
+	// Send Messenger notification
+	go func() {
+		defer func() { _ = recover() }()
+		if !isValidMessengerRecipientID(userID) {
+			return
+		}
+		itemSummary := "Custom cake updated"
+		if len(req.Items) > 0 {
+			itemSummary = req.Items[0].Name
+		}
+		productImage := "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=200&fit=crop"
+		if len(req.Items) > 0 && strings.TrimSpace(req.Items[0].ImageURL) != "" {
+			imgURL := strings.TrimSpace(req.Items[0].ImageURL)
+			if strings.HasPrefix(imgURL, "https://") {
+				productImage = imgURL
+			}
+		}
+		title := "Custom Order Updated"
+		subtitle := fmt.Sprintf("Order #BF-%d • %s • Total: $%.2f", orderID, itemSummary, subtotal)
+		buttons := []Button{
+			{Type: "postback", Title: "Track Order", Payload: fmt.Sprintf("TRACK_ORDER_%d", orderID)},
+		}
+		_ = SendOrderCardWithTag(userID, orderID, title, subtitle, productImage, buttons, "POST_PURCHASE_UPDATE")
+	}()
+}
+
+// cancelCustomOrder cancels the existing custom order, then creates a new one with the submitted items
+func cancelCustomOrder(w http.ResponseWriter, userID string, req OrderChoiceRequest) {
+	orderID := req.OrderID
+	if orderID <= 0 {
+		http.Error(w, "missing order_id", http.StatusBadRequest)
+		return
+	}
+
+	existingOrder, err := models.GetOrderByID(orderID)
+	if err != nil || existingOrder == nil {
+		http.Error(w, "order not found", http.StatusNotFound)
+		return
+	}
+	if strings.TrimSpace(existingOrder.SenderID) != "" && strings.TrimSpace(existingOrder.SenderID) != strings.TrimSpace(userID) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "order_access_denied",
+			"message": "You can only cancel your own orders.",
+		})
+		return
+	}
+
+	status := strings.ToLower(strings.TrimSpace(existingOrder.Status))
+	if status != "pending" && status != "scheduled" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "order_not_cancellable",
+			"message": "This order can no longer be cancelled.",
+		})
+		return
+	}
+
+	// Cancel existing order
+	_, err = configs.DB.Exec(`UPDATE orders SET status = 'cancelled' WHERE id = $1`, orderID)
+	if err != nil {
+		log.Printf("❌ cancelCustomOrder: failed to cancel order #%d: %v", orderID, err)
+		http.Error(w, "failed to cancel order", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("🗑️ Custom order #%d cancelled", orderID)
+
+	// Now create the new order
+	createNewOrderAfterChoice(w, userID, req)
+
+	// Send Messenger notification about cancellation
+	go func() {
+		defer func() { _ = recover() }()
+		if !isValidMessengerRecipientID(userID) {
+			return
+		}
+		_ = SendMessage(userID, fmt.Sprintf("Your previous custom cake order #BF-%d has been cancelled. A new order has been created with your updated selections.", orderID))
+	}()
 }
 
 // addItemsToExistingOrder adds items to existing order, merging duplicate products
@@ -109,6 +513,44 @@ func addItemsToExistingOrder(w http.ResponseWriter, userID string, orderID int, 
 	existingOrder, err := models.GetOrderByID(orderID)
 	if err != nil || existingOrder == nil {
 		http.Error(w, "order not found", http.StatusNotFound)
+		return
+	}
+	if strings.TrimSpace(existingOrder.SenderID) != "" && strings.TrimSpace(existingOrder.SenderID) != strings.TrimSpace(userID) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "order_access_denied",
+			"message": "You can only add items to your own active orders.",
+		})
+		return
+	}
+
+	status := strings.ToLower(strings.TrimSpace(existingOrder.Status))
+	if status == "delivered" || status == "cancelled" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "order_not_modifiable",
+			"message": "That order can’t be modified anymore.",
+		})
+		return
+	}
+	// Allow adding to pending/preparing orders, and scheduled custom orders
+	allowModify := status == "pending" || status == "preparing"
+	if status == "scheduled" && isCustomOrder(orderID) {
+		allowModify = true
+	}
+	if !allowModify {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":    false,
+			"error":      "order_not_modifiable",
+			"message":    "Items can only be added while the order is pending or preparing.",
+			"order_type": "regular",
+		})
 		return
 	}
 
@@ -177,23 +619,67 @@ func addItemsToExistingOrder(w http.ResponseWriter, userID string, orderID int, 
 		}
 	}
 
-	// Update order totals
+	// Recalculate order totals from actual items (prevents drift)
 	_, _ = configs.DB.Exec(`
 		UPDATE orders
-		SET total_items = total_items + $1,
-		    subtotal = subtotal + $2,
-		    total_amount = total_amount + $3
-		WHERE id = $4
-	`, totalNewItems, totalNewSubtotal, totalNewSubtotal, orderID)
+		SET total_items = (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = $1),
+		    subtotal = (SELECT COALESCE(SUM(price * quantity), 0) FROM order_items WHERE order_id = $1),
+		    total_amount = (SELECT COALESCE(SUM(price * quantity), 0) FROM order_items WHERE order_id = $1) - COALESCE(discount, 0) + COALESCE(delivery_fee, 0)
+		WHERE id = $1
+	`, orderID)
 
 	_ = models.UpsertCustomerPhone(userID, "")
 
+	// Fetch updated order for response totals
+	updatedOrderForResp, _ := models.GetOrderByID(orderID)
+	var respSubtotal, respTotal, respDeliveryFee, respDiscount float64
+	var respDeliveryType, respAddress, respCustomerName string
+	if updatedOrderForResp != nil {
+		respSubtotal = updatedOrderForResp.Subtotal
+		respTotal = updatedOrderForResp.TotalAmount
+		respDeliveryFee = updatedOrderForResp.DeliveryFee
+		respDiscount = updatedOrderForResp.Discount
+		respDeliveryType = updatedOrderForResp.DeliveryType
+		respAddress = updatedOrderForResp.Address
+		respCustomerName = updatedOrderForResp.CustomerName
+	}
+
+	// Fetch all items for the full receipt
+	allItems, _ := models.GetOrderItems(orderID)
+	type respItem struct {
+		Name     string  `json:"name"`
+		Qty      int     `json:"qty"`
+		Price    float64 `json:"price"`
+		Total    float64 `json:"line_total"`
+		ImageURL string  `json:"image_url,omitempty"`
+	}
+	var fullItems []respItem
+	for _, it := range allItems {
+		fullItems = append(fullItems, respItem{
+			Name:     it.Product,
+			Qty:      it.Quantity,
+			Price:    it.Price,
+			Total:    it.Price * float64(it.Quantity),
+			ImageURL: it.ImageURL,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"orderID": orderID,
-		"message": fmt.Sprintf("✅ Added %d items to your order #BF-%d", totalNewItems, orderID),
-		"action":  "items_merged",
+		"success":       true,
+		"orderID":       orderID,
+		"order_id":      orderID,
+		"message":       fmt.Sprintf("✅ Added %d items to your order #BF-%d", totalNewItems, orderID),
+		"action":        "items_merged",
+		"subtotal":      respSubtotal,
+		"total":         respTotal,
+		"total_amount":  respTotal,
+		"delivery_fee":  respDeliveryFee,
+		"discount":      respDiscount,
+		"delivery_type": respDeliveryType,
+		"address":       respAddress,
+		"customer_name": respCustomerName,
+		"items":         fullItems,
 	})
 
 	// Send Messenger notification
@@ -255,14 +741,25 @@ func createNewOrderAfterChoice(w http.ResponseWriter, userID string, req OrderCh
 
 	status := "pending"
 
+	// Detect order type from items
+	detectedType := string(getChoiceItemsOrderType(req.Items))
+
 	// Insert new order
 	insertQuery := `
-		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, 0, $6, $7, NOW())
+		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, order_type, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, $6, $7, $8, NOW())
 		RETURNING id
 	`
 
-	err := configs.DB.QueryRow(insertQuery, customerInfo, req.DeliveryType, req.Address, status, totalItems, subtotal, userID).Scan(&orderID)
+	err := configs.DB.QueryRow(insertQuery, customerInfo, req.DeliveryType, req.Address, status, totalItems, subtotal, userID, detectedType).Scan(&orderID)
+	if err != nil {
+		// Fallback without order_type column
+		err = configs.DB.QueryRow(`
+			INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, 0, $6, $7, NOW())
+			RETURNING id
+		`, customerInfo, req.DeliveryType, req.Address, status, totalItems, subtotal, userID).Scan(&orderID)
+	}
 	if err != nil {
 		log.Printf("❌ Failed to create new order: %v", err)
 		http.Error(w, "failed to create order", http.StatusInternalServerError)
@@ -294,10 +791,19 @@ func createNewOrderAfterChoice(w http.ResponseWriter, userID string, req OrderCh
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"orderID": orderID,
-		"message": fmt.Sprintf("✅ New order #BF-%d created with %d items", orderID, totalItems),
-		"action":  "new_order_created",
+		"success":       true,
+		"orderID":       orderID,
+		"order_id":      orderID,
+		"message":       fmt.Sprintf("✅ New order #BF-%d created with %d items", orderID, totalItems),
+		"action":        "new_order_created",
+		"subtotal":      subtotal,
+		"total":         subtotal,
+		"total_amount":  subtotal,
+		"delivery_fee":  0,
+		"discount":      0,
+		"delivery_type": req.DeliveryType,
+		"address":       req.Address,
+		"customer_name": customerInfo,
 	})
 
 	// Send Messenger notification
@@ -344,14 +850,20 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	tok := strings.TrimSpace(r.URL.Query().Get("t"))
-	if tok == "" {
-		http.Error(w, "missing auth token", http.StatusUnauthorized)
-		return
+	psid := ""
+	if tok != "" {
+		if verified, errTok := VerifyWebviewToken(tok); errTok == nil {
+			psid = verified
+		}
 	}
-	psid, errTok := VerifyWebviewToken(tok)
-	if errTok != nil {
-		http.Error(w, "invalid auth token", http.StatusUnauthorized)
-		return
+	if psid == "" {
+		if isValidMessengerRecipientID(req.UserID) {
+			log.Printf("⚠️  Falling back to user_id for chat order: %s", req.UserID)
+			psid = req.UserID
+		} else {
+			http.Error(w, "invalid auth token", http.StatusUnauthorized)
+			return
+		}
 	}
 	userID := psid
 
@@ -360,18 +872,21 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	normalizedPhone, ok := NormalizeMyanmarPhoneE164(req.CustomerPhone)
-	if !ok {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "invalid_phone",
-			"message": "Enter 09xxxxxxxxx or +959xxxxxxxxx",
-		})
-		return
+	// Phone is optional for custom cake orders (customer identified via Messenger PSID)
+	if req.CustomerPhone != "" {
+		normalizedPhone, ok := NormalizeMyanmarPhoneE164(req.CustomerPhone)
+		if !ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "invalid_phone",
+				"message": "Enter 09xxxxxxxxx or +959xxxxxxxxx",
+			})
+			return
+		}
+		req.CustomerPhone = normalizedPhone
 	}
-	req.CustomerPhone = normalizedPhone
 
 	blocked, err := models.IsIdentityBlocked("psid", userID)
 	if err != nil {
@@ -389,20 +904,22 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	blocked, err = models.IsIdentityBlocked("phone", req.CustomerPhone)
-	if err != nil {
-		http.Error(w, "failed to verify customer", http.StatusInternalServerError)
-		return
-	}
-	if blocked {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "blocked",
-			"message": "This phone number is currently restricted from placing new orders. Please contact the bakery if you believe this is a mistake.",
-		})
-		return
+	if req.CustomerPhone != "" {
+		blocked, err = models.IsIdentityBlocked("phone", req.CustomerPhone)
+		if err != nil {
+			http.Error(w, "failed to verify customer", http.StatusInternalServerError)
+			return
+		}
+		if blocked {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "blocked",
+				"message": "This phone number is currently restricted from placing new orders. Please contact the bakery if you believe this is a mistake.",
+			})
+			return
+		}
 	}
 
 	// PRODUCTION-GRADE: Validate stock availability using atomic check
@@ -459,6 +976,10 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// ─── Determine Order Type ─────────────────────────────────
+	orderTypeDetected := getOrderType(&req)
+	log.Printf("📋 [OrderType] Detected: %s for user %s", orderTypeDetected, userID)
+
 	// Calculate subtotal from items
 	subtotal := 0.0
 	var totalItems int
@@ -486,76 +1007,99 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		customerInfo += " (" + req.CustomerPhone + ")"
 	}
 
-	activeStatuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
-	existingOrders, _ := models.GetAllOrdersBySenderIDAndStatuses(userID, activeStatuses)
-	log.Printf("🔍 [OrderChoice] Checking for existing orders. UserID: %s, Found: %d orders", userID, len(existingOrders))
+	// ─── Simplified Order Rules (Food App Style) ──────────────
+	if !req.ForceNewOrder {
+		canOrder, reason, modifiableOrders := canCreateOrder(userID, orderTypeDetected)
+		log.Printf("🔍 [OrderRules] Type: %s, CanOrder: %v, Reason: %s", orderTypeDetected, canOrder, reason)
 
-	// Filter out delivered/cancelled orders and check if any are available for adding items
-	var availableOrders []*models.Order
-	if len(existingOrders) > 0 {
-		for _, order := range existingOrders {
-			status := strings.ToLower(strings.TrimSpace(order.Status))
-			allowAdd := status != "delivered" && status != "cancelled"
-			if allowAdd {
-				availableOrders = append(availableOrders, order)
-				log.Printf("🔍 [OrderChoice] Available order found: #%d, Status: %s, Items: %d", order.ID, order.Status, order.TotalItems)
-			} else {
-				log.Printf("🔍 [OrderChoice] Skipping order #%d with status: %s (not available for adding)", order.ID, order.Status)
+		if !canOrder {
+			if reason == "existing_custom_modifiable" && len(modifiableOrders) > 0 {
+				// Custom cake order exists and is modifiable — ask user what to do
+				existingOrder := modifiableOrders[0]
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"success":  true,
+					"action":   "existing_custom_order",
+					"message":  fmt.Sprintf("You already have a custom cake order (#BF-%d). Would you like to update it or cancel and start fresh?", existingOrder.ID),
+					"order_id": existingOrder.ID,
+					"order": map[string]interface{}{
+						"id":     existingOrder.ID,
+						"status": existingOrder.Status,
+						"items":  existingOrder.TotalItems,
+						"amount": existingOrder.TotalAmount,
+					},
+					"newItems":   req.Items,
+					"order_type": string(orderTypeDetected),
+				})
+				return
 			}
-		}
-	}
 
-	log.Printf("🔍 [OrderChoice] Total available orders after filtering: %d", len(availableOrders))
+			if reason == "add_to_existing" && len(modifiableOrders) > 0 {
+				type OrderSummary struct {
+					ID      int     `json:"id"`
+					Status  string  `json:"status"`
+					Items   int     `json:"items"`
+					Amount  float64 `json:"amount"`
+					Summary string  `json:"summary"`
+				}
+				var summaries []OrderSummary
+				for _, order := range modifiableOrders {
+					// Count actual items from order_items table (more reliable than cached total_items)
+					actualItems := order.TotalItems
+					var count int
+					if err := configs.DB.QueryRow(`SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = $1`, order.ID).Scan(&count); err == nil && count > 0 {
+						actualItems = count
+					}
+					summaries = append(summaries, OrderSummary{
+						ID:      order.ID,
+						Status:  order.Status,
+						Items:   actualItems,
+						Amount:  order.TotalAmount,
+						Summary: fmt.Sprintf("Order #BF-%d • %d items • $%.2f", order.ID, actualItems, order.TotalAmount),
+					})
+				}
 
-	if len(availableOrders) > 0 { // Build summary of available orders
-		type OrderSummary struct {
-			ID      int     `json:"id"`
-			Status  string  `json:"status"`
-			Items   int     `json:"items"`
-			Amount  float64 `json:"amount"`
-			Summary string  `json:"summary"`
-		}
-
-		var orderSummaries []OrderSummary
-		for _, order := range availableOrders {
-			summary := OrderSummary{
-				ID:      order.ID,
-				Status:  order.Status,
-				Items:   order.TotalItems,
-				Amount:  order.TotalAmount,
-				Summary: fmt.Sprintf("Order #BF-%d (%s) • %d items • $%.2f", order.ID, order.Status, order.TotalItems, order.TotalAmount),
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"success":    true,
+					"action":     "ask_user_choice",
+					"message":    "Add to your existing order or start fresh?",
+					"orders":     summaries,
+					"newItems":   req.Items,
+					"order_type": string(orderTypeDetected),
+				})
+				return
 			}
-			orderSummaries = append(orderSummaries, summary)
-		}
 
-		// Return choice with all available orders
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":  true,
-			"action":   "ask_user_choice",
-			"message":  "You have active orders. Which one would you like to add items to?",
-			"orders":   orderSummaries,
-			"newItems": req.Items,
-		})
-		return
-	}
-
-	// Check for orders by phone if no user orders found
-	if len(existingOrders) == 0 && req.CustomerPhone != "" {
-		phoneOrder, _ := models.GetLatestOrderByPhoneAndStatuses(req.CustomerPhone, activeStatuses)
-		if phoneOrder != nil {
-			status := strings.ToLower(strings.TrimSpace(phoneOrder.Status))
+			// Blocked — clear message to user
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "order_locked",
-				"message": "We found an active order for this phone number that can’t be modified from this session. Please continue from the original Messenger chat or wait until it completes.",
-				"status":  status,
-				"order":   phoneOrder.ID,
+				"success":    false,
+				"error":      "order_blocked",
+				"message":    reason,
+				"order_type": string(orderTypeDetected),
 			})
 			return
+		}
+
+		// Phone-based duplicate check
+		if req.CustomerPhone != "" {
+			activeStatuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
+			phoneOrder, _ := models.GetLatestOrderByPhoneAndStatuses(req.CustomerPhone, activeStatuses)
+			if phoneOrder != nil && strings.TrimSpace(phoneOrder.SenderID) != userID {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"success":    false,
+					"error":      "order_locked",
+					"message":    "An active order exists for this phone number. Please continue from the original Messenger chat or wait until it completes.",
+					"order_type": string(orderTypeDetected),
+				})
+				return
+			}
 		}
 	}
 
@@ -584,10 +1128,10 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 
 	var orderID int
 
-	// New insert with promotion fields
+	// New insert with promotion fields and order_type
 	insertWithPromotion := `
-		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, promotion_id, discount, scheduled_for, schedule_type, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, NOW())
+		INSERT INTO orders (customer_name, delivery_type, address, status, total_items, subtotal, delivery_fee, total_amount, sender_id, promotion_id, discount, scheduled_for, schedule_type, order_type, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, $9, $10, $11, $12, $13, NOW())
 		RETURNING id
 	`
 
@@ -604,7 +1148,7 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	`
 
 	// Try insert with promotion columns first
-	err = configs.DB.QueryRow(insertWithPromotion, customerInfo, req.DeliveryType, req.Address, orderStatus, totalItems, subtotal, total, userID, promotionID, discount, scheduledFor, scheduleType).Scan(&orderID)
+	err = configs.DB.QueryRow(insertWithPromotion, customerInfo, req.DeliveryType, req.Address, orderStatus, totalItems, subtotal, total, userID, promotionID, discount, scheduledFor, scheduleType, string(orderTypeDetected)).Scan(&orderID)
 	if err != nil {
 		// Backwards compatible fallback if DB columns aren't migrated yet.
 		msg := err.Error()
@@ -669,17 +1213,17 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("✅ Order #%d created successfully", orderID)
+	log.Printf("✅ Order #%d created successfully (type: %s)", orderID, orderTypeDetected)
 
-	// Send response
-	resp := ChatOrderResponse{
-		Success: true,
-		OrderID: orderID,
-		Message: "Order placed successfully!",
-	}
-
+	// Send response with order type info
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"orderID":    orderID,
+		"message":    fmt.Sprintf("Order #BF-%d placed successfully!", orderID),
+		"order_type": string(orderTypeDetected),
+		"type_label": getOrderTypeLabel(orderTypeDetected),
+	})
 
 	// Send confirmation message to user via Messenger (async)
 	go func() {
@@ -728,7 +1272,14 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 			subtitle = fmt.Sprintf("%s • Scheduled %s %s", subtitle, req.Schedule.Date, req.Schedule.Time)
 		}
 
+		// Title based on order type
 		title := "Order Confirmed"
+		switch orderTypeDetected {
+		case OrderTypeCustom:
+			title = "🎂 Custom Cake Order Received"
+		case OrderTypeScheduled:
+			title = "⏰ Scheduled Order Confirmed"
+		}
 
 		// Buttons for the card - include order ID so Track Order shows this specific order
 		trackPayload := fmt.Sprintf("TRACK_ORDER_%d", orderID)

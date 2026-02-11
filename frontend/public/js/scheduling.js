@@ -13,13 +13,38 @@ function isValidBusinessTime(dateStr, timeStr) {
 
 function initScheduleSheet() {
     document.getElementById('barSchedule').addEventListener('click', () => {
-        const d = new Date();
-        document.getElementById('scheduleDate').value = d.toISOString().slice(0, 10);
-        document.getElementById('scheduleTime').value = '';
+        const dateEl = document.getElementById('scheduleDate');
+        const timeEl = document.getElementById('scheduleTime');
+        // Schedule must be for today or later
+        const today = new Date().toISOString().slice(0, 10);
+        dateEl.min = today;
+        dateEl.max = '';
+        // Pre-fill with existing schedule if set, otherwise default to today
+        const existing = window.getPendingSchedule ? window.getPendingSchedule() : null;
+        if (existing && existing.date) {
+            dateEl.value = existing.date;
+            timeEl.value = existing.time || '';
+        } else {
+            dateEl.value = new Date().toISOString().slice(0, 10);
+            timeEl.value = '';
+        }
+        // Show/hide the Remove button
+        const removeBtn = document.getElementById('scheduleRemove');
+        if (removeBtn) removeBtn.style.display = (existing && existing.date) ? '' : 'none';
         openSheet('scheduleSheet');
     });
     
     document.getElementById('scheduleCancel').addEventListener('click', closeSheets);
+
+    // Remove schedule button
+    document.getElementById('scheduleRemove').addEventListener('click', () => {
+        if (window.setPendingSchedule) window.setPendingSchedule(null);
+        const userId = typeof getUserId === 'function' ? getUserId() : '';
+        if (userId) localStorage.removeItem(`pending_schedule_${userId}`);
+        window.updateCart();
+        closeSheets();
+        showToast('Schedule removed', 'success');
+    });
     
     document.getElementById('scheduleConfirm').addEventListener('click', () => {
         const date = document.getElementById('scheduleDate').value;

@@ -3,8 +3,47 @@
  */
 
 let isSubmitting = false; // Prevent double submissions
+let isSubmittingPreorder = false;
 let activeOrder = null;
 let activeOrderEditable = false;
+
+// ── Inline validation helpers ──
+function clearFieldErrors() {
+    document.querySelectorAll('.form-input.invalid').forEach(el => el.classList.remove('invalid'));
+    document.querySelectorAll('.field-error').forEach(el => { el.textContent = ''; el.style.display = 'none'; });
+}
+function markFieldInvalid(fieldId, msg) {
+    const el = document.getElementById(fieldId);
+    if (el) el.classList.add('invalid');
+    const errEl = document.getElementById(fieldId + 'Error');
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+    else if (typeof showError === 'function') showError(msg);
+}
+
+// ── Promise-based confirm modal ──
+function showConfirmModal(title, message) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'bf-modal-overlay active';
+        overlay.innerHTML = `
+            <div class="bf-modal" role="dialog" aria-modal="true" aria-labelledby="_cfm_title">
+                <h3 class="bf-modal-title" id="_cfm_title">${title}</h3>
+                <p class="bf-modal-body">${message}</p>
+                <div class="bf-modal-actions">
+                    <button class="bf-modal-btn bf-modal-btn-secondary" data-action="cancel">Cancel</button>
+                    <button class="bf-modal-btn bf-modal-btn-primary" data-action="confirm">Continue</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => {
+            const action = e.target.dataset.action;
+            if (action === 'confirm' || action === 'cancel') {
+                overlay.remove();
+                resolve(action === 'confirm');
+            }
+        });
+    });
+}
 
 function getAuthToken() {
     const params = new URLSearchParams(window.location.search);
@@ -12,6 +51,21 @@ function getAuthToken() {
     if (tok) return tok;
     if (window.getWebviewToken) return window.getWebviewToken();
     return '';
+}
+
+function getResolvedUserId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlUserId = urlParams.get('user_id') || '';
+    let storedUserId = '';
+    try {
+        storedUserId = localStorage.getItem('bf_psid') || localStorage.getItem('bf_user_id') || '';
+    } catch (e) {}
+    const resolvedUserId = (storedUserId && storedUserId !== 'guest')
+        ? storedUserId
+        : ((urlUserId && urlUserId !== 'guest')
+            ? urlUserId
+            : (window.getUserId ? window.getUserId() : 'guest'));
+    return resolvedUserId || 'guest';
 }
 
 function splitNamePhone(rawName) {
@@ -62,6 +116,14 @@ function applyActiveOrder(order) {
     }
 
     setEditLock(!activeOrderEditable);
+}
+
+function getActiveOrderBlockMessage() {
+    if (!activeOrder || !activeOrder.id || activeOrderEditable) return '';
+    const status = String(activeOrder.status || '').trim().toLowerCase();
+    // Scheduled orders are independent — they never block order now
+    if (status === 'scheduled') return '';
+    return 'You already have an active order that can’t be modified right now. Please wait until it completes.';
 }
 
 async function loadActiveOrder() {
@@ -131,7 +193,7 @@ async function validateCartStock() {
     }
 }
 
-function submitOrder() {
+async function submitOrder() {
     console.log('🔍 Submit order clicked');
     
     // Prevent double submission
@@ -146,15 +208,91 @@ function submitOrder() {
     const notes = document.getElementById('orderNotes').value.trim();
     const deliveryType = window.getDeliveryType();
 
-    if (!name) { showError('Please enter your name'); return; }
-    if (!phoneRaw) { showError('Please enter your phone number'); return; }
-    const phone = normalizeMyanmarPhoneE164(phoneRaw);
-    if (!phone || !isValidMyanmarPhone(phone)) {
-        showError('Enter 09xxxxxxxxx or +959xxxxxxxxx');
+    const focusDeliveryField = (id) => {
+        if (typeof closeSheets === 'function') closeSheets();
+        if (typeof openDeliveryForm === 'function') openDeliveryForm();
+        const el = document.getElementById(id);
+        if (el) el.focus();
+    };
+
+    // ── Inline validation with field highlighting ──
+    clearFieldErrors();
+
+    if (!name) {
+        focusDeliveryField('customerName');
+        markFieldInvalid('customerName', 'Please enter your name');
         return;
     }
-    if (!deliveryType) { showError('Please select delivery type'); return; }
-    if (deliveryType === 'delivery' && !address) { showError('Please enter delivery address'); return; }
+    if (!phoneRaw) {
+        focusDeliveryField('customerPhone');
+        markFieldInvalid('customerPhone', 'Please enter your phone number');
+        return;
+    }
+    const phone = normalizeMyanmarPhoneE164(phoneRaw);
+    if (!phone || !isValidMyanmarPhone(phone)) {
+        focusDeliveryField('customerPhone');
+        markFieldInvalid('customerPhone', 'Enter 09xxxxxxxxx or +959xxxxxxxxx');
+        return;
+    }
+    if (!deliveryType) {
+        focusDeliveryField('customerName');
+        showError('Please select Pick Up or Delivery');
+        return;
+    }
+    if (deliveryType === 'delivery' && !address) {
+        focusDeliveryField('customerAddress');
+        markFieldInvalid('customerAddress', 'Please enter delivery address');
+        return;
+    }
+
+    // ── If there's a pending custom cake preorder, submit it with the customer info ──
+    if (window.__pendingPreorder) {
+        const po = window.__pendingPreorder;
+        window.__pendingPreorder = null; // clear so it doesn't fire twice
+
+        // Show loading state on the Place Order button
+        isSubmitting = true;
+        const submitBtn = document.getElementById('placeOrderBtn');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner"></span> Placing custom cake order...';
+        }
+
+        const sched = { type: deliveryType, date: po.scheduleDate, time: po.scheduleTime };
+
+        if (window.submitPreorderDirect) {
+            // Multi-cake format (new): po.cakes is an array
+            if (po.cakes && po.cakes.length > 0) {
+                await window.submitPreorderDirect({
+                    cakes: po.cakes, schedule: sched,
+                    customerName: name, customerPhone: phone,
+                    deliveryType: deliveryType,
+                    address: deliveryType === 'delivery' ? address : 'Pickup at store'
+                });
+            } else {
+                // Legacy single-cake format
+                await window.submitPreorderDirect({
+                    flavor: po.flavor, size: po.size, layers: po.layers, cream: po.cream,
+                    message: po.message, notes: po.notes, product: po.product, schedule: sched,
+                    customerName: name, customerPhone: phone,
+                    deliveryType: deliveryType,
+                    address: deliveryType === 'delivery' ? address : 'Pickup at store'
+                });
+            }
+        }
+        isSubmitting = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i data-lucide="check-circle"></i><span>Place Order</span>';
+        }
+        return;
+    }
+
+    const blockMsg = getActiveOrderBlockMessage();
+    if (blockMsg) {
+        showError(blockMsg);
+        return;
+    }
 
     const phoneEl = document.getElementById('customerPhone');
     if (phoneEl && phoneEl.value.trim() !== phone) {
@@ -178,7 +316,10 @@ function submitOrder() {
         const addressChanged = nextAddress !== activeAddress;
 
         if (nameChanged || phoneChanged || typeChanged || addressChanged) {
-            const ok = window.confirm(`You already have an active order (#${activeOrder.id}). Updating your details will update that same order. Continue?`);
+            const ok = await showConfirmModal(
+                'Update Order Details?',
+                `You already have an active order (#${activeOrder.id}). Updating your details will update that same order.`
+            );
             if (!ok) {
                 resetSubmitButton();
                 return;
@@ -295,7 +436,7 @@ function processOrderSubmission(name, phone, address, notes, deliveryType, userI
         delivery_type: deliveryType,
         address: deliveryType === 'delivery' ? address : 'Pickup at store',
         notes: combinedNotes,
-        schedule: window.getPendingSchedule() || null,
+        schedule: null, // Regular "Order Now" never sends a schedule
         geo: window.getGeo(),
         delivery_directions: document.getElementById('deliveryDirections')?.value.trim() || ''
     };
@@ -369,7 +510,12 @@ function processOrderSubmission(name, phone, address, notes, deliveryType, userI
                 console.log('Failed to persist recent order', e);
             }
 
-            showToast(`Order #${data.order_id} placed!`, 'success');
+            // Show order type specific toast
+            const typeLabel = data.type_label || '';
+            const toastMsg = typeLabel 
+                ? `Order #${data.order_id} placed! ${typeLabel}`
+                : `Order #${data.order_id} placed!`;
+            showToast(toastMsg, 'success');
 
             try {
                 const invoiceKey = `bf_invoice_${data.order_id}`;
@@ -452,6 +598,254 @@ function resetSubmitButton() {
     }
 }
 
+function resetPreorderSubmitButton() {
+    isSubmittingPreorder = false;
+    const btn = document.getElementById('preorderSubmitBtn');
+    if (btn) {
+        btn.disabled = false;
+        if (typeof window.updatePreorderPriceSummary === 'function') {
+            window.updatePreorderPriceSummary();
+        } else {
+            const textEl = document.getElementById('preorderSubmitText');
+            if (textEl) textEl.textContent = 'Order Custom Cake';
+        }
+        if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+    }
+}
+
+function resolveUserAndToken() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlUserId = urlParams.get('user_id') || '';
+    let storedUserId = '';
+    try {
+        storedUserId = localStorage.getItem('bf_psid') || localStorage.getItem('bf_user_id') || '';
+    } catch (e) {}
+    const resolvedUserId = (storedUserId && storedUserId !== 'guest')
+        ? storedUserId
+        : ((urlUserId && urlUserId !== 'guest')
+            ? urlUserId
+            : (window.getUserId ? window.getUserId() : 'guest'));
+    let userId = resolvedUserId || 'guest';
+    const tok = urlParams.get('t') || (window.getWebviewToken ? window.getWebviewToken() : '');
+    if (tok && userId === 'guest') {
+        userId = '';
+    }
+    return { userId, tok };
+}
+
+function normalizePreorderKey(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function resolvePreorderOptionPrice(settings, key, value) {
+    const map = settings && typeof settings === 'object' ? settings[key] : null;
+    if (!map || typeof map !== 'object') return 0;
+    const target = normalizePreorderKey(value);
+    let matched = 0;
+    Object.keys(map).forEach((name) => {
+        if (normalizePreorderKey(name) === target) {
+            const parsed = Number(map[name]);
+            if (Number.isFinite(parsed)) matched = parsed;
+        }
+    });
+    return matched;
+}
+
+function formatPreorderMoney(value) {
+    const num = Number(value || 0);
+    return Number.isFinite(num) ? num.toFixed(2) : '0.00';
+}
+
+// addPreorderToCart removed — custom cakes now submit as separate orders via submitPreorderDirect
+
+async function submitPreorder(preorder) {
+    if (isSubmittingPreorder) return;
+
+    const draft = preorder || window.pendingPreorderDraft || {};
+    window.pendingPreorderDraft = draft;
+
+    const name = document.getElementById('customerName')?.value.trim() || '';
+    const phoneRaw = document.getElementById('customerPhone')?.value.trim() || '';
+    const address = document.getElementById('customerAddress')?.value.trim() || '';
+    const deliveryType = window.getDeliveryType ? window.getDeliveryType() : '';
+
+    const blockMsg = getActiveOrderBlockMessage();
+    if (blockMsg) {
+        showError(blockMsg);
+        return;
+    }
+
+    // ── Inline validation with field highlighting ──
+    clearFieldErrors();
+
+    const focusField = (id) => {
+        if (typeof closeSheets === 'function') closeSheets();
+        if (typeof openDeliveryForm === 'function') openDeliveryForm();
+        const el = document.getElementById(id);
+        if (el) el.focus();
+    };
+
+    if (!name) {
+        focusField('customerName');
+        markFieldInvalid('customerName', 'Please enter your name');
+        return;
+    }
+    if (!phoneRaw) {
+        focusField('customerPhone');
+        markFieldInvalid('customerPhone', 'Please enter your phone number');
+        return;
+    }
+    const phone = normalizeMyanmarPhoneE164(phoneRaw);
+    if (!phone || !isValidMyanmarPhone(phone)) {
+        focusField('customerPhone');
+        markFieldInvalid('customerPhone', 'Enter 09xxxxxxxxx or +959xxxxxxxxx');
+        return;
+    }
+    if (!deliveryType) {
+        focusField('customerName');
+        showError('Please select Pick Up or Delivery');
+        return;
+    }
+    if (deliveryType === 'delivery' && !address) {
+        focusField('customerAddress');
+        markFieldInvalid('customerAddress', 'Please enter delivery address');
+        return;
+    }
+
+    const schedule = window.getPendingSchedule ? window.getPendingSchedule() : null;
+    if (!schedule || !schedule.date || !schedule.time) {
+        showError('Please select date & time in the custom cake form');
+        return;
+    }
+
+    const { userId, tok } = resolveUserAndToken();
+    if (!tok && (!userId || userId === 'guest')) {
+        showError('Please open this order form from Messenger to receive confirmation.');
+        return;
+    }
+
+    const flavor = String(draft?.flavor || '').trim();
+    const size = String(draft?.size || '').trim();
+    const cakeMessage = String(draft?.message || '').trim();
+    const notes = String(draft?.notes || '').trim();
+    const layers = String(draft?.layers || '').trim();
+    const cream = String(draft?.cream || '').trim();
+    const selectedProduct = draft?.product || null;
+    const selectedName = String(selectedProduct?.name || '').trim();
+    const selectedImage = String(selectedProduct?.image_url || '').trim();
+
+    if (!flavor) { showError('Pick a flavor'); return; }
+    if (!size) { showError('Pick a size'); return; }
+
+    const parts = [
+        selectedName ? `Cake: ${selectedName}` : '',
+        `Flavor: ${flavor}`,
+        `Size: ${size}`,
+        layers ? `Layers: ${layers}` : '',
+        cream ? `Cream: ${cream}` : '',
+        cakeMessage ? `Cake message: ${cakeMessage}` : '',
+        notes ? `Notes: ${notes}` : '',
+        'Price: to be confirmed',
+    ].filter(Boolean);
+    const itemNote = parts.join('\n');
+
+    const items = [{
+        product_id: Number(selectedProduct?.id || 0),
+        name: selectedName ? `${selectedName} — Custom (${size})` : `Custom Cake (${size})`,
+        qty: 1,
+        price: Number(selectedProduct?.price || 0),
+        note: itemNote,
+        image_url: selectedImage || 'https://images.unsplash.com/photo-1603532648955-039310d9ed75?w=400&h=200&fit=crop'
+    }];
+
+    const orderData = {
+        user_id: userId,
+        items,
+        channel: 'messenger',
+        customer_name: name,
+        customer_phone: phone,
+        delivery_type: deliveryType,
+        address: deliveryType === 'delivery' ? address : 'Pickup at store',
+        notes: `Custom cake order\n\n${itemNote}`,
+        schedule,
+        geo: window.getGeo ? window.getGeo() : null,
+        delivery_directions: document.getElementById('deliveryDirections')?.value.trim() || ''
+    };
+
+    isSubmittingPreorder = true;
+    const btn = document.getElementById('preorderSubmitBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Placing order...';
+    }
+
+    const endpoint = tok ? (`/api/chat/orders?t=${encodeURIComponent(tok)}`) : '/api/chat/orders';
+
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderData)
+        });
+
+        const text = await res.text();
+        let data = null;
+        try {
+            data = JSON.parse(text);
+        } catch (e) {
+            data = { success: false, message: text };
+        }
+
+        if (data && data.action === 'ask_user_choice') {
+            showOrderChoiceDialog(data, orderData, name, phone);
+            resetPreorderSubmitButton();
+            return;
+        }
+
+        if (res.ok && data && data.success) {
+            let whenLabel = '';
+            try {
+                const when = new Date(`${schedule.date}T${schedule.time}:00`);
+                whenLabel = Number.isNaN(when.getTime())
+                    ? `${schedule.date} ${schedule.time}`
+                    : when.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+                whenLabel = `${schedule.date} ${schedule.time}`;
+            }
+            showToast(`Custom cake order #${data.order_id} placed! Ready by ${whenLabel}`, 'success');
+            try {
+                window.setPendingSchedule && window.setPendingSchedule(null);
+                localStorage.removeItem(`pending_schedule_${getUserId()}`);
+            } catch (e) {}
+            if (typeof closeSheets === 'function') closeSheets();
+            window.pendingPreorderDraft = null;
+
+            const params = new URLSearchParams();
+            if (data.order_id != null) params.set('order_id', data.order_id);
+            if (userId) params.set('user_id', userId);
+            params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
+            if (name) params.set('customer_name', name);
+            if (phone) params.set('customer_phone', phone);
+            if (address) params.set('address', deliveryType === 'delivery' ? address : 'Pickup at store');
+            params.set('notes', orderData.notes);
+            if (data.total != null) params.set('total', data.total);
+            if (data.total_amount != null) params.set('total_amount', data.total_amount);
+            window.location.href = `/order-details.html?${params.toString()}`;
+            return;
+        }
+
+        if (data && data.error) {
+            showToast(data.message || 'Order failed', 'error');
+        } else {
+            showToast('Order failed: ' + (data?.message || 'Unknown error'), 'error');
+        }
+        resetPreorderSubmitButton();
+    } catch (err) {
+        showToast('Network error. Please try again.', 'error');
+        resetPreorderSubmitButton();
+    }
+}
+
 function resetOrder() {
     window.setCart({});
     // Reset cart items array too
@@ -477,6 +871,428 @@ function resetOrder() {
 window.submitOrder = submitOrder;
 window.validateCartStock = validateCartStock;
 window.loadActiveOrder = loadActiveOrder;
+window.submitPreorder = submitPreorder;
+window.submitPreorderDirect = submitPreorderDirect;
+
+/**
+ * Submit a custom cake preorder directly as its own separate order.
+ * Called from the preorder sheet with all customer info included.
+ */
+async function submitPreorderDirect(opts) {
+    if (isSubmittingPreorder) return;
+
+    const name = opts.customerName || '';
+    const phoneRaw = opts.customerPhone || '';
+    const deliveryType = opts.deliveryType || 'pickup';
+    const address = opts.address || (deliveryType === 'pickup' ? 'Pickup at store' : '');
+    const schedule = opts.schedule || null;
+    const phone = phoneRaw ? (normalizeMyanmarPhoneE164(phoneRaw) || phoneRaw) : '';
+
+    if (!schedule || !schedule.date || !schedule.time) {
+        showError('Please select date & time');
+        return;
+    }
+
+    const { userId, tok } = resolveUserAndToken();
+    const settings = window.currentPreorderSettings || {};
+
+    // Build items from multi-cake cart or single legacy format
+    let items = [];
+    let totalPrice = 0;
+    let allNotes = [];
+
+    if (opts.cakes && opts.cakes.length > 0) {
+        // Multi-cake format
+        opts.cakes.forEach((cake, i) => {
+            const selectedProduct = cake.product || null;
+            const selectedName = String(selectedProduct?.name || '').trim();
+            const selectedImage = String(selectedProduct?.image_url || '').trim();
+            const cakePrice = Number(cake.price || 0);
+
+            const parts = [
+                selectedName ? `Cake: ${selectedName}` : '',
+                `Flavor: ${cake.flavor}`,
+                `Size: ${cake.size}`,
+                cake.layers ? `Layers: ${cake.layers}` : '',
+                cake.cream ? `Cream: ${cake.cream}` : '',
+                cake.sizeExtra > 0 ? `Size +$${cake.sizeExtra.toFixed(2)}` : '',
+                cake.layerExtra > 0 ? `Layer +$${cake.layerExtra.toFixed(2)}` : '',
+                cake.creamExtra > 0 ? `Cream +$${cake.creamExtra.toFixed(2)}` : '',
+                cake.message ? `Cake message: ${cake.message}` : '',
+                cake.notes ? `Notes: ${cake.notes}` : '',
+            ].filter(Boolean);
+            const itemNote = parts.join('\n');
+
+            items.push({
+                product_id: Number(selectedProduct?.id || 0),
+                name: selectedName ? `${selectedName} — Custom (${cake.size})` : `Custom Cake (${cake.size})`,
+                qty: 1,
+                price: cakePrice,
+                note: itemNote,
+                image_url: selectedImage || 'https://images.unsplash.com/photo-1603532648955-039310d9ed75?w=400&h=200&fit=crop'
+            });
+            totalPrice += cakePrice;
+            allNotes.push(`Cake ${i + 1}: ${selectedName || 'Custom'} — ${cake.flavor}, ${cake.size}`);
+        });
+    } else {
+        // Legacy single-cake format
+        const flavor = String(opts.flavor || '').trim();
+        const size = String(opts.size || '').trim();
+        const cakeMessage = String(opts.message || '').trim();
+        const notes = String(opts.notes || '').trim();
+        const layers = String(opts.layers || '').trim();
+        const cream = String(opts.cream || '').trim();
+        const selectedProduct = opts.product || null;
+        const selectedName = String(selectedProduct?.name || '').trim();
+        const selectedImage = String(selectedProduct?.image_url || '').trim();
+
+        const sizePrice = resolvePreorderOptionPrice(settings, 'size_prices', size);
+        const layerPrice = resolvePreorderOptionPrice(settings, 'layer_prices', layers);
+        const creamPrice = resolvePreorderOptionPrice(settings, 'cream_prices', cream);
+        const extra = [sizePrice, layerPrice, creamPrice].reduce((s, v) => s + (Number.isFinite(Number(v)) ? Number(v) : 0), 0);
+        const basePrice = Number(selectedProduct?.price || 0);
+        totalPrice = basePrice + extra;
+
+        const parts = [
+            selectedName ? `Cake: ${selectedName}` : '',
+            `Flavor: ${flavor}`, `Size: ${size}`,
+            layers ? `Layers: ${layers}` : '', cream ? `Cream: ${cream}` : '',
+            sizePrice > 0 ? `Size price: $${sizePrice.toFixed(2)}` : '',
+            layerPrice > 0 ? `Layer price: $${layerPrice.toFixed(2)}` : '',
+            creamPrice > 0 ? `Cream price: $${creamPrice.toFixed(2)}` : '',
+            cakeMessage ? `Cake message: ${cakeMessage}` : '',
+            notes ? `Notes: ${notes}` : '',
+        ].filter(Boolean);
+        const itemNote = parts.join('\n');
+
+        items = [{
+            product_id: Number(selectedProduct?.id || 0),
+            name: selectedName ? `${selectedName} — Custom (${size})` : `Custom Cake (${size})`,
+            qty: 1, price: totalPrice, note: itemNote,
+            image_url: selectedImage || 'https://images.unsplash.com/photo-1603532648955-039310d9ed75?w=400&h=200&fit=crop'
+        }];
+        allNotes.push(itemNote);
+    }
+
+    const orderData = {
+        user_id: userId,
+        items,
+        channel: 'messenger',
+        order_type: 'custom',
+        customer_name: name,
+        customer_phone: phone,
+        delivery_type: deliveryType,
+        address: address,
+        notes: `Custom cake order\n\n${allNotes.join('\n\n')}`,
+        schedule,
+    };
+
+    isSubmittingPreorder = true;
+    const btn = document.getElementById('preorderSubmitBtn');
+    const btnText = document.getElementById('preorderSubmitText');
+    if (btn) btn.disabled = true;
+    if (btnText) btnText.textContent = 'Placing order...';
+
+    const endpoint = tok ? (`/api/chat/orders?t=${encodeURIComponent(tok)}`) : '/api/chat/orders';
+
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(orderData)
+        });
+
+        const text = await res.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch (e) { data = { success: false, message: text }; }
+
+        if (data && data.action === 'ask_user_choice') {
+            showOrderChoiceDialog(data, orderData, name, phone);
+            resetPreorderSubmitButton();
+            return;
+        }
+
+        if (data && data.action === 'existing_custom_order') {
+            showCustomOrderChoiceDialog(data, orderData, name, phone);
+            resetPreorderSubmitButton();
+            return;
+        }
+
+        if (res.ok && data && data.success) {
+            let whenLabel = '';
+            try {
+                const when = new Date(`${schedule.date}T${schedule.time}:00`);
+                whenLabel = Number.isNaN(when.getTime())
+                    ? `${schedule.date} ${schedule.time}`
+                    : when.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+                whenLabel = `${schedule.date} ${schedule.time}`;
+            }
+            showToast(`Custom cake order #${data.order_id} placed! Ready by ${whenLabel}`, 'success');
+
+            // Store invoice data for receipt page
+            const invoiceData = {
+                order_id: data.order_id,
+                created_at: new Date().toISOString(),
+                customer_name: name,
+                customer_phone: phone,
+                address: address,
+                delivery_type: deliveryType === 'pickup' ? 'Pick Up' : 'Delivery',
+                payment_status: 'Pay on delivery',
+                subtotal: totalPrice,
+                discount: 0,
+                delivery_fee: 0,
+                total: totalPrice,
+                promotions: [],
+                items: items.map(it => ({ name: it.name, qty: it.qty, price: it.price, line_total: it.price * it.qty }))
+            };
+            try {
+                localStorage.setItem(`bf_invoice_${data.order_id}`, JSON.stringify(invoiceData));
+            } catch (e) {}
+            // Also store under a known key so the receipt page can always find it
+            try {
+                localStorage.setItem('bf_invoice_latest', JSON.stringify(invoiceData));
+            } catch (e) {}
+
+            if (typeof closeSheets === 'function') closeSheets();
+
+            const params = new URLSearchParams();
+            if (data.order_id != null) params.set('order_id', data.order_id);
+            if (userId) params.set('user_id', userId);
+            params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
+            if (name) params.set('customer_name', name);
+            if (phone) params.set('customer_phone', phone);
+            if (address) params.set('address', address);
+            params.set('subtotal', totalPrice);
+            params.set('total', totalPrice);
+            // Encode items for receipt page
+            try {
+                params.set('items', JSON.stringify(items.map(it => ({ name: it.name, qty: it.qty, price: it.price }))));
+            } catch (e) {}
+            window.location.href = `/order-details.html?${params.toString()}`;
+            return;
+        }
+
+        if (data && data.error) {
+            showError(data.message || 'Order failed');
+        } else {
+            showError('Order failed: ' + (data?.message || 'Unknown error'));
+        }
+        resetPreorderSubmitButton();
+    } catch (err) {
+        showError('Network error. Please try again.');
+        resetPreorderSubmitButton();
+    } finally {
+        isSubmittingPreorder = false;
+    }
+}
+
+// ========== Custom Order Choice Dialog ==========
+function showCustomOrderChoiceDialog(choiceData, orderData, name, phone) {
+    console.log('🎨 Creating custom order choice dialog');
+
+    const existing = document.getElementById('orderChoiceDialog');
+    if (existing) existing.remove();
+
+    const dialog = document.createElement('div');
+    dialog.id = 'orderChoiceDialog';
+    dialog.style.cssText = `
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6); display: flex;
+        align-items: center; justify-content: center;
+        z-index: 10000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        animation: fadeIn 0.2s ease-out;
+    `;
+
+    if (!document.getElementById('orderChoiceAnimations')) {
+        const style = document.createElement('style');
+        style.id = 'orderChoiceAnimations';
+        style.textContent = `
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        `;
+        document.head.appendChild(style);
+    }
+
+    const existingOrderId = choiceData.order_id;
+    const existingOrder = choiceData.order || {};
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: white; border-radius: 12px; padding: 40px;
+        max-width: 480px; width: 90%;
+        box-shadow: 0 10px 50px rgba(0,0,0,0.25);
+        text-align: center;
+        animation: slideUp 0.3s ease-out;
+    `;
+
+    const title = document.createElement('h2');
+    title.textContent = 'Existing Custom Order';
+    title.style.cssText = `
+        margin: 0 0 12px 0; font-size: 22px; font-weight: 700;
+        color: #1a1a1a; letter-spacing: -0.5px;
+    `;
+
+    const msg = document.createElement('p');
+    msg.textContent = `You already have a custom cake order. What would you like to do?`;
+    msg.style.cssText = `
+        margin: 0 0 24px 0; font-size: 15px; color: #555; line-height: 1.6;
+    `;
+
+    // Order info card (like the order list in the regular dialog)
+    const orderList = document.createElement('div');
+    orderList.style.cssText = `
+        background: #f9f9f9; border-radius: 8px; margin-bottom: 24px;
+    `;
+    const orderItem = document.createElement('div');
+    orderItem.style.cssText = `
+        padding: 12px 16px; display: flex;
+        justify-content: space-between; align-items: center;
+    `;
+    const orderInfo = document.createElement('div');
+    orderInfo.textContent = `Order #BF-${existingOrderId} • ${existingOrder.items || 0} items • $${Number(existingOrder.amount || 0).toFixed(2)}`;
+    orderInfo.style.cssText = `
+        flex: 1; font-size: 14px; color: #333; font-weight: 500;
+    `;
+    const statusBadge = document.createElement('span');
+    statusBadge.textContent = (existingOrder.status || 'pending').toUpperCase();
+    statusBadge.style.cssText = `
+        padding: 4px 10px; background: #FFF3E0; color: #E65100;
+        border-radius: 4px; font-size: 11px; font-weight: 600;
+    `;
+    orderItem.appendChild(orderInfo);
+    orderItem.appendChild(statusBadge);
+    orderList.appendChild(orderItem);
+
+    // Button group
+    const buttonGroup = document.createElement('div');
+    buttonGroup.style.cssText = `
+        display: flex; flex-direction: column; gap: 12px;
+    `;
+
+    // Add Items button
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '➕ Add Items to This Order';
+    addBtn.style.cssText = `
+        width: 100%; padding: 14px 24px;
+        background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+        color: white; border: none; border-radius: 8px;
+        font-size: 15px; font-weight: 600; cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    `;
+    addBtn.onmouseover = () => { addBtn.style.boxShadow = '0 6px 20px rgba(76,175,80,0.4)'; addBtn.style.transform = 'translateY(-2px)'; };
+    addBtn.onmouseout = () => { addBtn.style.boxShadow = '0 4px 12px rgba(76,175,80,0.3)'; addBtn.style.transform = 'translateY(0)'; };
+    addBtn.onclick = () => {
+        dialog.remove();
+        sendCustomOrderChoice('add_to_existing', existingOrderId, orderData, name, phone);
+    };
+
+    // Update (replace) button
+    const updateBtn = document.createElement('button');
+    updateBtn.textContent = '✏️ Replace With New Selections';
+    updateBtn.style.cssText = `
+        width: 100%; padding: 14px 24px;
+        background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+        color: white; border: none; border-radius: 8px;
+        font-size: 15px; font-weight: 600; cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
+    `;
+    updateBtn.onmouseover = () => { updateBtn.style.boxShadow = '0 6px 20px rgba(255,152,0,0.4)'; updateBtn.style.transform = 'translateY(-2px)'; };
+    updateBtn.onmouseout = () => { updateBtn.style.boxShadow = '0 4px 12px rgba(255,152,0,0.3)'; updateBtn.style.transform = 'translateY(0)'; };
+    updateBtn.onclick = () => {
+        dialog.remove();
+        sendCustomOrderChoice('update_custom', existingOrderId, orderData, name, phone);
+    };
+
+    // Cancel & new button
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '🔄 Cancel & Start Fresh';
+    cancelBtn.style.cssText = `
+        width: 100%; padding: 14px 24px;
+        background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+        color: white; border: none; border-radius: 8px;
+        font-size: 15px; font-weight: 600; cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+    `;
+    cancelBtn.onmouseover = () => { cancelBtn.style.boxShadow = '0 6px 20px rgba(33,150,243,0.4)'; cancelBtn.style.transform = 'translateY(-2px)'; };
+    cancelBtn.onmouseout = () => { cancelBtn.style.boxShadow = '0 4px 12px rgba(33,150,243,0.3)'; cancelBtn.style.transform = 'translateY(0)'; };
+    cancelBtn.onclick = () => {
+        dialog.remove();
+        sendCustomOrderChoice('cancel_custom', existingOrderId, orderData, name, phone);
+    };
+
+    buttonGroup.appendChild(addBtn);
+    buttonGroup.appendChild(updateBtn);
+    buttonGroup.appendChild(cancelBtn);
+
+    content.appendChild(title);
+    content.appendChild(msg);
+    content.appendChild(orderList);
+    content.appendChild(buttonGroup);
+    dialog.appendChild(content);
+
+    document.body.appendChild(dialog);
+
+    // Close on backdrop click
+    dialog.addEventListener('click', (e) => {
+        if (e.target === dialog) {
+            dialog.remove();
+        }
+    });
+}
+
+function sendCustomOrderChoice(choice, existingOrderID, orderData, name, phone) {
+    console.log('📤 Sending custom order choice:', choice);
+
+    const tok = getAuthToken();
+    const userId = getResolvedUserId();
+
+    const choiceRequest = {
+        choice: choice,
+        order_id: existingOrderID || 0,
+        items: orderData.items,
+        customer_name: name || orderData.customer_name || '',
+        delivery_type: orderData.delivery_type || '',
+        address: orderData.address || '',
+        user_id: userId,
+    };
+
+    const tokenParam = tok ? `?t=${encodeURIComponent(tok)}` : '';
+    const apiUrl = `/api/chat/orders/choice${tokenParam}`;
+
+    // Show loading state
+    showToast('Processing...', 'info');
+
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(choiceRequest)
+    })
+    .then(async res => {
+        const text = await res.text();
+        try { return JSON.parse(text); }
+        catch (e) { return { success: false, message: text }; }
+    })
+    .then(data => {
+        console.log('📥 Custom choice response:', data);
+        if (data.success) {
+            completeOrderSubmission(data, name, phone, orderData);
+        } else {
+            showError(data.message || 'Failed to process order');
+            resetPreorderSubmitButton();
+        }
+    })
+    .catch(err => {
+        console.error('❌ Network error:', err);
+        showError('Network error. Please try again.');
+        resetPreorderSubmitButton();
+    });
+}
+
 // ========== Order Choice Dialog ==========
 function showOrderChoiceDialog(choiceData, orderData, name, phone) {
     console.log('🎨 Creating choice dialog');
@@ -552,7 +1368,11 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
     
     const msg = document.createElement('p');
     const orderCount = choiceData.orders ? choiceData.orders.length : 1;
-    msg.textContent = `You have ${orderCount} active ${orderCount === 1 ? 'order' : 'orders'}. Which would you like to add items to?`;
+    const orderTypeLabel = choiceData.order_type === 'custom' ? 'custom cake' : 
+                           choiceData.order_type === 'scheduled' ? 'scheduled' : '';
+    msg.textContent = choiceData.block_new_order
+        ? 'You already have a custom cake order. Select it to edit.'
+        : `You have ${orderCount} active ${orderCount === 1 ? 'order' : 'orders'}. Add items to an existing order or start fresh?`;
     msg.style.cssText = `
         margin: 0 0 24px 0;
         font-size: 15px;
@@ -627,37 +1447,39 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
         flex-wrap: wrap;
     `;
     
-    const addBtn = document.createElement('button');
-    addBtn.textContent = '✨ Create New Order Instead';
-    addBtn.style.cssText = `
-        flex: 1;
-        min-width: 200px;
-        padding: 14px 24px;
-        background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
-    `;
-    addBtn.onmouseover = () => { 
-        addBtn.style.boxShadow = '0 6px 20px rgba(33, 150, 243, 0.4)';
-        addBtn.style.transform = 'translateY(-2px)';
-    };
-    addBtn.onmouseout = () => { 
-        addBtn.style.boxShadow = '0 4px 12px rgba(33, 150, 243, 0.3)';
-        addBtn.style.transform = 'translateY(0)';
-    };
-    addBtn.onclick = () => {
-        console.log('User chose: new order');
-        dialog.remove();
-        sendOrderChoice('new_order', null, orderData, name, phone);
-    };
-    
-    buttonGroup.appendChild(addBtn);
+    if (!choiceData.block_new_order) {
+        const addBtn = document.createElement('button');
+        addBtn.textContent = '✨ Create New Order Instead';
+        addBtn.style.cssText = `
+            flex: 1;
+            min-width: 200px;
+            padding: 14px 24px;
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
+        `;
+        addBtn.onmouseover = () => { 
+            addBtn.style.boxShadow = '0 6px 20px rgba(33, 150, 243, 0.4)';
+            addBtn.style.transform = 'translateY(-2px)';
+        };
+        addBtn.onmouseout = () => { 
+            addBtn.style.boxShadow = '0 4px 12px rgba(33, 150, 243, 0.3)';
+            addBtn.style.transform = 'translateY(0)';
+        };
+        addBtn.onclick = () => {
+            console.log('User chose: new order');
+            dialog.remove();
+            sendOrderChoice('new_order', null, orderData, name, phone);
+        };
+        
+        buttonGroup.appendChild(addBtn);
+    }
     
     content.appendChild(title);
     content.appendChild(msg);
@@ -673,6 +1495,7 @@ function sendOrderChoice(choice, existingOrderID, orderData, name, phone) {
     console.log('📤 Sending order choice:', choice);
     
     const tok = getAuthToken(); // Get the token using the same method
+    const userId = getResolvedUserId(); // Get user_id for fallback auth
     
     const choiceRequest = {
         choice: choice,
@@ -680,7 +1503,8 @@ function sendOrderChoice(choice, existingOrderID, orderData, name, phone) {
         items: orderData.items,
         customer_name: name,
         delivery_type: orderData.delivery_type,
-        address: orderData.address
+        address: orderData.address,
+        user_id: userId  // Include user_id for fallback authentication
     };
     
     // Use relative URL with token parameter for ngrok compatibility
@@ -689,6 +1513,8 @@ function sendOrderChoice(choice, existingOrderID, orderData, name, phone) {
     
     console.log('📤 API URL:', apiUrl);
     console.log('📤 Token present:', !!tok);
+    console.log('📤 User ID:', userId);
+    console.log('📤 Request body:', JSON.stringify(choiceRequest));
     
     fetch(apiUrl, {
         method: 'POST',
@@ -723,24 +1549,60 @@ function sendOrderChoice(choice, existingOrderID, orderData, name, phone) {
 }
 
 function completeOrderSubmission(data, name, phone, orderData) {
+    const orderId = data.orderID || data.order_id;
     const orderMsg = data.action === 'items_merged' 
-        ? `Items added to order #${data.orderID}!`
-        : `Order #${data.orderID} placed successfully!`;
+        ? `Items added to order #${orderId}!`
+        : `Order #${orderId} placed successfully!`;
     
     showToast(orderMsg, 'success');
-    
-    // Close form after a short delay
-    setTimeout(() => {
-        if (window.MessengerExtensions) {
-            window.MessengerExtensions.requestCloseBrowser(
-                () => console.log("✅ Webview closed"),
-                (err) => {
-                    console.log("❌ Error closing webview:", err);
-                    window.location.reload();
-                }
-            );
-        } else {
-            resetOrder();
-        }
-    }, 1500);
+
+    // Store invoice data in localStorage for the receipt page
+    try {
+        const invoiceKey = `bf_invoice_${orderId}`;
+        const deliveryType = data.delivery_type || orderData.delivery_type || '';
+        const address = data.address || orderData.address || '';
+        const invoiceData = {
+            order_id: orderId,
+            created_at: new Date().toISOString(),
+            customer_name: data.customer_name || name || '',
+            customer_phone: phone || '',
+            address: deliveryType === 'pickup' ? 'Pickup at store' : address,
+            delivery_type: deliveryType === 'pickup' ? 'Pick Up' : 'Delivery',
+            payment_status: 'Pay on delivery',
+            subtotal: data.subtotal ?? null,
+            discount: data.discount ?? null,
+            delivery_fee: data.delivery_fee ?? null,
+            total: data.total ?? data.total_amount ?? null,
+            promotions: [],
+            items: (data.items && data.items.length > 0 ? data.items : orderData.items || []).map(it => ({
+                name: it.name,
+                qty: it.qty || it.quantity,
+                price: it.price,
+                line_total: Number(it.line_total || it.price * (it.qty || it.quantity || 1))
+            }))
+        };
+        localStorage.setItem(invoiceKey, JSON.stringify(invoiceData));
+    } catch (e) {
+        console.log('Failed to store invoice', e);
+    }
+
+    // Build receipt URL with params
+    const userId = getResolvedUserId();
+    const deliveryType = data.delivery_type || orderData.delivery_type || '';
+    const params = new URLSearchParams();
+    if (orderId != null) params.set('order_id', orderId);
+    if (userId) params.set('user_id', userId);
+    params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
+    if (name) params.set('customer_name', data.customer_name || name);
+    if (phone) params.set('customer_phone', phone);
+    const address = data.address || orderData.address || '';
+    if (address) params.set('address', deliveryType === 'delivery' ? address : 'Pickup at store');
+    if (data.subtotal != null) params.set('subtotal', data.subtotal);
+    if (data.discount != null) params.set('discount', data.discount);
+    if (data.delivery_fee != null) params.set('delivery_fee', data.delivery_fee);
+    if (data.total != null) params.set('total', data.total);
+    if (data.total_amount != null) params.set('total_amount', data.total_amount);
+
+    // Redirect to receipt page
+    window.location.href = `/order-details.html?${params.toString()}`;
 }

@@ -39,22 +39,47 @@ export default function ProductFormPage() {
   const [uploading, setUploading] = useState(false);
 
   const [errors, setErrors] = useState({});
+  const [preorderSettings, setPreorderSettings] = useState({
+    enabled: true,
+    start_date: '',
+    end_date: '',
+    sizes: [],
+    layers: [],
+    creams: [],
+    flavors: [],
+    size_prices: {},
+    layer_prices: {},
+    cream_prices: {}
+  });
+  const [preorderInputs, setPreorderInputs] = useState({
+    size: '',
+    sizePrice: '',
+    layer: '',
+    layerPrice: '',
+    cream: '',
+    creamPrice: '',
+    flavor: ''
+  });
+  const [preorderLoading, setPreorderLoading] = useState(false);
+  const [preorderSaving, setPreorderSaving] = useState(false);
+  const [preorderErrors, setPreorderErrors] = useState({});
+  const isCake = (form.category || '').trim().toLowerCase() === 'cakes';
 
-  const getAdminToken = () => {
+  const getAdminToken = useCallback(() => {
     if (typeof window === 'undefined') return '';
     try {
       return localStorage.getItem('bakeflow_admin_token') || '';
     } catch {
       return '';
     }
-  };
+  }, []);
 
-  const buildAuthHeaders = (extra = {}) => {
+  const buildAuthHeaders = useCallback((extra = {}) => {
     const tok = getAdminToken();
     const headers = { ...extra };
     if (tok) headers.Authorization = `Bearer ${tok}`;
     return headers;
-  };
+  }, [getAdminToken]);
 
   const showNotification = useCallback((message, type) => {
     setNotification({ show: true, message, type });
@@ -92,9 +117,44 @@ export default function ProductFormPage() {
     }
   }, [API_BASE, id, isEdit, showNotification]);
 
+  const fetchPreorderSettings = useCallback(async () => {
+    if (!isEdit || !id) return;
+    setPreorderLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/products/${id}/preorder-settings`, {
+        headers: buildAuthHeaders()
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPreorderSettings({
+          enabled: data.enabled !== false,
+          start_date: data.start_date || '',
+          end_date: data.end_date || '',
+          sizes: Array.isArray(data.sizes) ? data.sizes : [],
+          layers: Array.isArray(data.layers) ? data.layers : [],
+          creams: Array.isArray(data.creams) ? data.creams : [],
+          flavors: Array.isArray(data.flavors) ? data.flavors : [],
+          size_prices: data.size_prices && typeof data.size_prices === 'object' ? data.size_prices : {},
+          layer_prices: data.layer_prices && typeof data.layer_prices === 'object' ? data.layer_prices : {},
+          cream_prices: data.cream_prices && typeof data.cream_prices === 'object' ? data.cream_prices : {}
+        });
+      } else {
+        showNotification(data.error || 'Failed to load preorder settings', 'danger');
+      }
+    } catch (e) {
+      showNotification('Failed to load preorder settings', 'danger');
+    } finally {
+      setPreorderLoading(false);
+    }
+  }, [API_BASE, buildAuthHeaders, id, isEdit, showNotification]);
+
   useEffect(() => {
     fetchProduct();
   }, [fetchProduct]);
+
+  useEffect(() => {
+    fetchPreorderSettings();
+  }, [fetchPreorderSettings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +221,107 @@ export default function ProductFormPage() {
     setTagsList((prev) => prev.filter((t) => normalizeTag(t) !== target));
   };
 
+  const normalizeOption = (value) => String(value || '').trim();
+  const parseExtraPrice = (value) => {
+    const num = Number(value);
+    if (Number.isNaN(num)) return 0;
+    return num < 0 ? 0 : num;
+  };
+
+  const addPreorderOption = (listKey, inputKey, priceInputKey) => {
+    const nextValue = normalizeOption(preorderInputs[inputKey]);
+    if (!nextValue) return;
+    setPreorderSettings((prev) => {
+      const existing = prev[listKey] || [];
+      const hasValue = existing.some((v) => normalizeOption(v).toLowerCase() === nextValue.toLowerCase());
+      if (hasValue) return prev;
+      const next = { ...prev, [listKey]: [...existing, nextValue] };
+      if (priceInputKey) {
+        const priceKey = listKey === 'sizes' ? 'size_prices' : listKey === 'layers' ? 'layer_prices' : 'cream_prices';
+        const price = parseExtraPrice(preorderInputs[priceInputKey]);
+        next[priceKey] = { ...(prev[priceKey] || {}), [nextValue]: price };
+      }
+      return next;
+    });
+    setPreorderInputs((prev) => ({ ...prev, [inputKey]: '', ...(priceInputKey ? { [priceInputKey]: '' } : {}) }));
+  };
+
+  const removePreorderOption = (listKey, value) => {
+    const target = normalizeOption(value);
+    setPreorderSettings((prev) => ({
+      ...prev,
+      [listKey]: (prev[listKey] || []).filter((v) => normalizeOption(v) !== target),
+      ...(listKey === 'sizes' || listKey === 'layers' || listKey === 'creams'
+        ? {
+            [listKey === 'sizes' ? 'size_prices' : listKey === 'layers' ? 'layer_prices' : 'cream_prices']:
+              Object.fromEntries(Object.entries(prev[listKey === 'sizes' ? 'size_prices' : listKey === 'layers' ? 'layer_prices' : 'cream_prices'] || {}).filter(([k]) => normalizeOption(k) !== target))
+          }
+        : {})
+    }));
+  };
+
+  const savePreorderSettings = async () => {
+    if (!isEdit || !id) return;
+    if (!isCake) {
+      showNotification('Preorder settings are only available for cakes', 'danger');
+      return false;
+    }
+    setPreorderSaving(true);
+    setPreorderErrors({});
+    try {
+      if (preorderSettings.start_date && preorderSettings.end_date) {
+        const start = new Date(preorderSettings.start_date);
+        const end = new Date(preorderSettings.end_date);
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end < start) {
+          setPreorderErrors({ end_date: 'End date must be after start date' });
+          setPreorderSaving(false);
+          return false;
+        }
+      }
+      const res = await fetch(`${API_BASE}/api/admin/products/${id}/preorder-settings`, {
+        method: 'PUT',
+        headers: buildAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          enabled: preorderSettings.enabled,
+          start_date: preorderSettings.start_date || '',
+          end_date: preorderSettings.end_date || '',
+          sizes: preorderSettings.sizes || [],
+          layers: preorderSettings.layers || [],
+          creams: preorderSettings.creams || [],
+          flavors: preorderSettings.flavors || [],
+          size_prices: preorderSettings.size_prices || {},
+          layer_prices: preorderSettings.layer_prices || {},
+          cream_prices: preorderSettings.cream_prices || {}
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification('Preorder settings saved', 'success');
+        setPreorderSettings({
+          enabled: data.enabled !== false,
+          start_date: data.start_date || '',
+          end_date: data.end_date || '',
+          sizes: Array.isArray(data.sizes) ? data.sizes : [],
+          layers: Array.isArray(data.layers) ? data.layers : [],
+          creams: Array.isArray(data.creams) ? data.creams : [],
+          flavors: Array.isArray(data.flavors) ? data.flavors : [],
+          size_prices: data.size_prices && typeof data.size_prices === 'object' ? data.size_prices : {},
+          layer_prices: data.layer_prices && typeof data.layer_prices === 'object' ? data.layer_prices : {},
+          cream_prices: data.cream_prices && typeof data.cream_prices === 'object' ? data.cream_prices : {}
+        });
+        return true;
+      } else {
+        showNotification(data.error || 'Failed to save preorder settings', 'danger');
+        return false;
+      }
+    } catch (e) {
+      showNotification('Failed to save preorder settings', 'danger');
+      return false;
+    } finally {
+      setPreorderSaving(false);
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
     
@@ -174,12 +335,10 @@ export default function ProductFormPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
+  const saveProduct = async ({ redirect = true, silent = false } = {}) => {
     if (!validate()) {
       showNotification('Please fix the errors', 'danger');
-      return;
+      return false;
     }
 
     setSaving(true);
@@ -190,7 +349,6 @@ export default function ProductFormPage() {
       
       const method = isEdit ? 'PUT' : 'POST';
 
-      // Upload new image if a file was selected
       let imageUrl = form.image_url || '';
       if (file) {
         try {
@@ -206,7 +364,7 @@ export default function ProductFormPage() {
           showNotification(`Image upload failed: ${err.message}`, 'danger');
           setUploading(false);
           setSaving(false);
-          return;
+          return false;
         }
         setUploading(false);
       }
@@ -228,26 +386,47 @@ export default function ProductFormPage() {
       const data = await res.json();
       
       if (data.success) {
-        showNotification(
-          isEdit ? 'Product updated successfully' : 'Product created successfully',
-          'success'
-        );
-        setTimeout(() => router.push('/admin/products'), 1500);
-      } else {
-        showNotification(data.error || 'Failed to save product', 'danger');
+        if (!silent) {
+          showNotification(
+            isEdit ? 'Product updated successfully' : 'Product created successfully',
+            'success'
+          );
+        }
+        if (redirect) {
+          setTimeout(() => router.push('/admin/products'), 1500);
+        }
+        return true;
       }
+      showNotification(data.error || 'Failed to save product', 'danger');
+      return false;
     } catch (e) {
       showNotification('Error saving product', 'danger');
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  const handlePublish = async () => {
-    setForm({...form, status: 'active'});
-    setTimeout(() => {
-      document.getElementById('product-form').requestSubmit();
-    }, 100);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await saveProduct({ redirect: true });
+  };
+
+  const handleSaveAll = async () => {
+    if (!isEdit) {
+      await saveProduct({ redirect: true });
+      return;
+    }
+    const productSaved = await saveProduct({ redirect: false, silent: true });
+    if (!productSaved) return;
+    let preorderSaved = true;
+    if (isCake) {
+      preorderSaved = await savePreorderSettings();
+    }
+    if (preorderSaved) {
+      showNotification('Product and preorder settings saved', 'success');
+      setTimeout(() => router.push('/admin/products'), 1500);
+    }
   };
 
   const selectedTagSet = new Set(tagsList.map((t) => normalizeTag(t)));
@@ -323,13 +502,16 @@ export default function ProductFormPage() {
                   </div>
                 </div>
               ) : (
-                <div className="row">
-                  <div className="col-lg-8">
-                    <div className="card shadow-sm">
-                      <div className="card-body">
-                        <form id="product-form" onSubmit={handleSubmit}>
-                          {/* Product Name */}
-                          <div className="mb-3">
+                <form id="product-form" onSubmit={handleSubmit}>
+                  <div className="row g-4">
+                    <div className="col-xl-7">
+                      <div className="card shadow-sm border-0 mb-4">
+                        <div className="card-body p-4">
+                          <div className="d-flex align-items-center justify-content-between mb-4">
+                            <h5 className="mb-0 fw-bold">Product Details</h5>
+                          </div>
+
+                          <div className="mb-4">
                             <label className="form-label fw-semibold">Product Name *</label>
                             <input
                               type="text"
@@ -341,8 +523,67 @@ export default function ProductFormPage() {
                             {errors.name && <div className="invalid-feedback">{errors.name}</div>}
                           </div>
 
-                          {/* Description */}
-                          <div className="mb-3">
+                          <div className="mb-4">
+                            <label className="form-label fw-semibold">Price ($) *</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className={`form-control ${errors.price ? 'is-invalid' : ''}`}
+                              value={form.price}
+                              onChange={(e) => setForm({...form, price: e.target.value})}
+                              placeholder="0.00"
+                            />
+                            {errors.price && <div className="invalid-feedback">{errors.price}</div>}
+                          </div>
+
+                          <div className="mb-4">
+                            <label className="form-label fw-semibold">Stock Quantity *</label>
+                            <input
+                              type="number"
+                              className={`form-control ${errors.stock ? 'is-invalid' : ''}`}
+                              value={form.stock}
+                              onChange={(e) => setForm({...form, stock: e.target.value})}
+                              placeholder="0"
+                            />
+                            {errors.stock && <div className="invalid-feedback">{errors.stock}</div>}
+                          </div>
+
+                          <div className="mb-4">
+                            <label className="form-label fw-semibold">Image Upload</label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="form-control"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0] || null;
+                                setFile(f);
+                                if (f) setPreviewUrl(URL.createObjectURL(f));
+                                else setPreviewUrl(form.image_url || '');
+                              }}
+                            />
+                            <div className="mt-3 border rounded-4 bg-white p-3 d-flex align-items-center justify-content-center" style={{ minHeight: 240 }}>
+                              {previewUrl ? (
+                                <Image
+                                  src={previewUrl}
+                                  alt="Preview"
+                                  width={260}
+                                  height={260}
+                                  style={{ maxWidth: 260, maxHeight: 260, borderRadius: 12, height: 'auto' }}
+                                  unoptimized
+                                />
+                              ) : (
+                                <div className="text-muted small">No image selected</div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="card shadow-sm border-0">
+                        <div className="card-body p-4">
+                          <h6 className="fw-semibold mb-3">Additional Details</h6>
+
+                          <div className="mb-4">
                             <label className="form-label fw-semibold">Description</label>
                             <textarea
                               className="form-control"
@@ -353,8 +594,7 @@ export default function ProductFormPage() {
                             ></textarea>
                           </div>
 
-                          {/* Category */}
-                          <div className="mb-3">
+                          <div className="mb-4">
                             <label className="form-label fw-semibold">Category *</label>
                             <select
                               className={`form-select ${errors.category ? 'is-invalid' : ''}`}
@@ -372,7 +612,7 @@ export default function ProductFormPage() {
                             {errors.category && <div className="invalid-feedback">{errors.category}</div>}
                           </div>
 
-                          <div className="mb-3">
+                          <div className="mb-4">
                             <label className="form-label fw-semibold">Tags</label>
                             {tagsList.length > 0 && (
                               <div className="d-flex flex-wrap gap-2 mb-2">
@@ -454,139 +694,403 @@ export default function ProductFormPage() {
                             </div>
                           </div>
 
-                          {/* Price and Stock */}
-                          <div className="row">
-                            <div className="col-md-6 mb-3">
-                              <label className="form-label fw-semibold">Price ($) *</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                className={`form-control ${errors.price ? 'is-invalid' : ''}`}
-                                value={form.price}
-                                onChange={(e) => setForm({...form, price: e.target.value})}
-                                placeholder="0.00"
-                              />
-                              {errors.price && <div className="invalid-feedback">{errors.price}</div>}
-                            </div>
-
-                            <div className="col-md-6 mb-3">
-                              <label className="form-label fw-semibold">Stock Quantity *</label>
-                              <input
-                                type="number"
-                                className={`form-control ${errors.stock ? 'is-invalid' : ''}`}
-                                value={form.stock}
-                                onChange={(e) => setForm({...form, stock: e.target.value})}
-                                placeholder="0"
-                              />
-                              {errors.stock && <div className="invalid-feedback">{errors.stock}</div>}
-                            </div>
-                          </div>
-
-                          {/* Image URL */}
-                          <div className="mb-3">
-                            <label className="form-label fw-semibold">Image</label>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="form-control"
-                              onChange={(e) => {
-                                const f = e.target.files?.[0] || null;
-                                setFile(f);
-                                if (f) setPreviewUrl(URL.createObjectURL(f));
-                                else setPreviewUrl(form.image_url || '');
-                              }}
-                            />
-                            {previewUrl && (
-                              <div className="mt-2">
-                                <Image
-                                  src={previewUrl}
-                                  alt="Preview"
-                                  width={200}
-                                  height={200}
-                                  style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, height: 'auto' }}
-                                  unoptimized
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Sidebar */}
-                  <div className="col-lg-4">
-                    <div className="card shadow-sm mb-3">
-                      <div className="card-body">
-                        <h6 className="card-title fw-semibold mb-3">Status</h6>
-                        <select
-                          className="form-select mb-3"
-                          value={form.status}
-                          onChange={(e) => setForm({...form, status: e.target.value})}
-                        >
-                          <option value="draft">Draft</option>
-                          <option value="active">Active (Published)</option>
-                          <option value="inactive">Inactive</option>
-                          <option value="archived">Archived</option>
-                        </select>
-
-                        <div className="d-grid gap-2">
-                          <button 
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={handleSubmit}
-                            disabled={saving}
-                          >
-                            {saving ? (
-                              <>
-                                <span className="spinner-border spinner-border-sm me-2"></span>
-                                Saving...
-                              </>
-                            ) : (
-                              <>
-                                <i className="bi bi-save me-2"></i>
-                                {isEdit ? 'Update Product' : 'Create Product'}
-                              </>
-                            )}
-                          </button>
-
-                          {form.status === 'draft' && (
-                            <button 
-                              type="button"
-                              className="btn btn-success"
-                              onClick={handlePublish}
-                              disabled={saving}
+                          <div>
+                            <label className="form-label fw-semibold">Status</label>
+                            <select
+                              className="form-select"
+                              value={form.status}
+                              onChange={(e) => setForm({...form, status: e.target.value})}
                             >
-                              <i className="bi bi-check-circle me-2"></i>
-                              Save & Publish
-                            </button>
-                          )}
-
-                          <Link href="/admin/products">
-                            <button type="button" className="btn btn-outline-secondary w-100">
-                              Cancel
-                            </button>
-                          </Link>
+                              <option value="draft">Draft</option>
+                              <option value="active">Active (Published)</option>
+                              <option value="inactive">Inactive</option>
+                              <option value="archived">Archived</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Stock Alert */}
-                    {form.stock && parseInt(form.stock) < 10 && (
-                      <div className="alert alert-warning">
-                        <i className="bi bi-exclamation-triangle me-2"></i>
-                        <strong>Low Stock!</strong> Consider restocking soon.
-                      </div>
-                    )}
+                    <div className="col-xl-5">
+                      {isEdit && isCake && (
+                        <div className="card shadow-sm border-0 bg-light">
+                          <div className="card-body p-4">
+                            <div className="d-flex align-items-center justify-content-between mb-2">
+                              <h5 className="mb-0 fw-bold">Preorder Customization (Optional)</h5>
+                              <div className="form-check form-switch m-0">
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={!!preorderSettings.enabled}
+                                  onChange={(e) => setPreorderSettings((prev) => ({ ...prev, enabled: e.target.checked }))}
+                                  disabled={preorderLoading || preorderSaving}
+                                />
+                              </div>
+                            </div>
+                            <div className="text-muted small mb-4">Configure customization options and pricing for this product.</div>
 
-                    {form.stock && parseInt(form.stock) === 0 && (
-                      <div className="alert alert-danger">
-                        <i className="bi bi-x-circle me-2"></i>
-                        <strong>Out of Stock!</strong> This product is unavailable.
-                      </div>
-                    )}
+                            {preorderSettings.enabled && (
+                              <div className="d-flex flex-column gap-3">
+                                <div className="card border-0 shadow-sm">
+                                  <div className="card-body">
+                                    <div className="fw-semibold mb-2">Preorder Period</div>
+                                    <div className="row g-2">
+                                      <div className="col-6">
+                                        <label className="form-label small fw-semibold">Start date</label>
+                                        <input
+                                          type="date"
+                                          className="form-control"
+                                          value={preorderSettings.start_date}
+                                          onChange={(e) => setPreorderSettings((prev) => ({ ...prev, start_date: e.target.value }))}
+                                          disabled={preorderLoading || preorderSaving}
+                                        />
+                                      </div>
+                                      <div className="col-6">
+                                        <label className="form-label small fw-semibold">End date</label>
+                                        <input
+                                          type="date"
+                                          className={`form-control ${preorderErrors.end_date ? 'is-invalid' : ''}`}
+                                          value={preorderSettings.end_date}
+                                          onChange={(e) => setPreorderSettings((prev) => ({ ...prev, end_date: e.target.value }))}
+                                          disabled={preorderLoading || preorderSaving}
+                                        />
+                                        {preorderErrors.end_date && <div className="invalid-feedback">{preorderErrors.end_date}</div>}
+                                      </div>
+                                    </div>
+                                    <div className="text-muted small mt-2">Customers can only place preorders within this date range.</div>
+                                  </div>
+                                </div>
+
+                                <div className="card border-0 shadow-sm">
+                                  <div className="card-body">
+                                    <div className="fw-semibold mb-2">Cake Sizes (Extra Price)</div>
+                                    <div className="table-responsive">
+                                      <table className="table table-sm align-middle">
+                                        <thead className="table-light">
+                                          <tr>
+                                            <th>Size</th>
+                                            <th>Extra Price</th>
+                                            <th className="text-end">Actions</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {preorderSettings.sizes.map((item) => (
+                                            <tr key={`size-row-${item}`}>
+                                              <td>{item}</td>
+                                              <td>{Number(preorderSettings.size_prices?.[item] ?? 0).toFixed(2)}</td>
+                                              <td className="text-end">
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-sm btn-outline-danger"
+                                                  onClick={() => removePreorderOption('sizes', item)}
+                                                  disabled={preorderLoading || preorderSaving}
+                                                >
+                                                  <i className="bi bi-trash"></i>
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                          {!preorderSettings.sizes.length && (
+                                            <tr>
+                                              <td colSpan={3} className="text-muted small">No sizes added</td>
+                                            </tr>
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    <div className="row g-2 align-items-end">
+                                      <div className="col-12 col-md-5">
+                                        <label className="form-label small fw-semibold">Size</label>
+                                        <input
+                                          type="text"
+                                          className="form-control"
+                                          value={preorderInputs.size}
+                                          onChange={(e) => setPreorderInputs((prev) => ({ ...prev, size: e.target.value }))}
+                                          placeholder='e.g., 12"'
+                                          disabled={preorderLoading || preorderSaving}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              addPreorderOption('sizes', 'size', 'sizePrice');
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="col-12 col-md-4">
+                                        <label className="form-label small fw-semibold">Extra Price</label>
+                                        <input
+                                          type="number"
+                                          className="form-control"
+                                          value={preorderInputs.sizePrice}
+                                          onChange={(e) => setPreorderInputs((prev) => ({ ...prev, sizePrice: e.target.value }))}
+                                          placeholder="e.g., 30"
+                                          min="0"
+                                          step="0.01"
+                                          disabled={preorderLoading || preorderSaving}
+                                        />
+                                      </div>
+                                      <div className="col-12 col-md-3 d-grid">
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline-secondary"
+                                          onClick={() => addPreorderOption('sizes', 'size', 'sizePrice')}
+                                          disabled={preorderLoading || preorderSaving}
+                                        >
+                                          Add Size
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="card border-0 shadow-sm">
+                                  <div className="card-body">
+                                    <div className="fw-semibold mb-2">Cake Layers (Extra Price)</div>
+                                    <div className="table-responsive">
+                                      <table className="table table-sm align-middle">
+                                        <thead className="table-light">
+                                          <tr>
+                                            <th>Layers</th>
+                                            <th>Extra Price</th>
+                                            <th className="text-end">Actions</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {preorderSettings.layers.map((item) => (
+                                            <tr key={`layer-row-${item}`}>
+                                              <td>{item}</td>
+                                              <td>{Number(preorderSettings.layer_prices?.[item] ?? 0).toFixed(2)}</td>
+                                              <td className="text-end">
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-sm btn-outline-danger"
+                                                  onClick={() => removePreorderOption('layers', item)}
+                                                  disabled={preorderLoading || preorderSaving}
+                                                >
+                                                  <i className="bi bi-trash"></i>
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                          {!preorderSettings.layers.length && (
+                                            <tr>
+                                              <td colSpan={3} className="text-muted small">No layers added</td>
+                                            </tr>
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    <div className="row g-2 align-items-end">
+                                      <div className="col-12 col-md-5">
+                                        <label className="form-label small fw-semibold">Layers</label>
+                                        <input
+                                          type="text"
+                                          className="form-control"
+                                          value={preorderInputs.layer}
+                                          onChange={(e) => setPreorderInputs((prev) => ({ ...prev, layer: e.target.value }))}
+                                          placeholder="e.g., 4 layers"
+                                          disabled={preorderLoading || preorderSaving}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              addPreorderOption('layers', 'layer', 'layerPrice');
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="col-12 col-md-4">
+                                        <label className="form-label small fw-semibold">Extra Price</label>
+                                        <input
+                                          type="number"
+                                          className="form-control"
+                                          value={preorderInputs.layerPrice}
+                                          onChange={(e) => setPreorderInputs((prev) => ({ ...prev, layerPrice: e.target.value }))}
+                                          placeholder="e.g., 15"
+                                          min="0"
+                                          step="0.01"
+                                          disabled={preorderLoading || preorderSaving}
+                                        />
+                                      </div>
+                                      <div className="col-12 col-md-3 d-grid">
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline-secondary"
+                                          onClick={() => addPreorderOption('layers', 'layer', 'layerPrice')}
+                                          disabled={preorderLoading || preorderSaving}
+                                        >
+                                          Add Layer
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="card border-0 shadow-sm">
+                                  <div className="card-body">
+                                    <div className="fw-semibold mb-2">Cream / Frosting (Extra Price)</div>
+                                    <div className="table-responsive">
+                                      <table className="table table-sm align-middle">
+                                        <thead className="table-light">
+                                          <tr>
+                                            <th>Cream Type</th>
+                                            <th>Extra Price</th>
+                                            <th className="text-end">Actions</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {preorderSettings.creams.map((item) => (
+                                            <tr key={`cream-row-${item}`}>
+                                              <td>{item}</td>
+                                              <td>{Number(preorderSettings.cream_prices?.[item] ?? 0).toFixed(2)}</td>
+                                              <td className="text-end">
+                                                <button
+                                                  type="button"
+                                                  className="btn btn-sm btn-outline-danger"
+                                                  onClick={() => removePreorderOption('creams', item)}
+                                                  disabled={preorderLoading || preorderSaving}
+                                                >
+                                                  <i className="bi bi-trash"></i>
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                          {!preorderSettings.creams.length && (
+                                            <tr>
+                                              <td colSpan={3} className="text-muted small">No cream types added</td>
+                                            </tr>
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                    <div className="row g-2 align-items-end">
+                                      <div className="col-12 col-md-5">
+                                        <label className="form-label small fw-semibold">Cream name</label>
+                                        <input
+                                          type="text"
+                                          className="form-control"
+                                          value={preorderInputs.cream}
+                                          onChange={(e) => setPreorderInputs((prev) => ({ ...prev, cream: e.target.value }))}
+                                          placeholder="e.g., Fresh cream"
+                                          disabled={preorderLoading || preorderSaving}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                              e.preventDefault();
+                                              addPreorderOption('creams', 'cream', 'creamPrice');
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                      <div className="col-12 col-md-4">
+                                        <label className="form-label small fw-semibold">Extra Price</label>
+                                        <input
+                                          type="number"
+                                          className="form-control"
+                                          value={preorderInputs.creamPrice}
+                                          onChange={(e) => setPreorderInputs((prev) => ({ ...prev, creamPrice: e.target.value }))}
+                                          placeholder="e.g., 5"
+                                          min="0"
+                                          step="0.01"
+                                          disabled={preorderLoading || preorderSaving}
+                                        />
+                                      </div>
+                                      <div className="col-12 col-md-3 d-grid">
+                                        <button
+                                          type="button"
+                                          className="btn btn-outline-secondary"
+                                          onClick={() => addPreorderOption('creams', 'cream', 'creamPrice')}
+                                          disabled={preorderLoading || preorderSaving}
+                                        >
+                                          Add Cream
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="card border-0 shadow-sm">
+                                  <div className="card-body">
+                                    <div className="fw-semibold mb-2">Available Flavors</div>
+                                    <div className="d-flex gap-2 mb-2">
+                                      <input
+                                        type="text"
+                                        className="form-control"
+                                        value={preorderInputs.flavor}
+                                        onChange={(e) => setPreorderInputs((prev) => ({ ...prev, flavor: e.target.value }))}
+                                        placeholder="e.g., Chocolate"
+                                        disabled={preorderLoading || preorderSaving}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            addPreorderOption('flavors', 'flavor');
+                                          }
+                                        }}
+                                      />
+                                      <button
+                                        type="button"
+                                        className="btn btn-outline-secondary"
+                                        onClick={() => addPreorderOption('flavors', 'flavor')}
+                                        disabled={preorderLoading || preorderSaving}
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
+                                    <div className="d-flex flex-wrap gap-2">
+                                      {preorderSettings.flavors.map((item) => (
+                                        <span key={`flavor-${item}`} className="badge rounded-pill text-bg-light border d-inline-flex align-items-center gap-2 px-3 py-2">
+                                          <span>{item}</span>
+                                          <button
+                                            type="button"
+                                            className="btn btn-sm btn-link p-0 text-decoration-none"
+                                            onClick={() => removePreorderOption('flavors', item)}
+                                            aria-label={`Remove ${item}`}
+                                          >
+                                            <i className="bi bi-x-lg"></i>
+                                          </button>
+                                        </span>
+                                      ))}
+                                      {!preorderSettings.flavors.length && <span className="text-muted small">No flavors added</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+
+                  <div className="d-flex flex-column flex-md-row justify-content-end gap-2 mt-4">
+                    <Link href="/admin/products">
+                      <button type="button" className="btn btn-outline-secondary">
+                        Cancel
+                      </button>
+                    </Link>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-lg px-5"
+                      onClick={handleSaveAll}
+                      disabled={saving || preorderSaving || uploading}
+                    >
+                      {saving || preorderSaving || uploading ? 'Saving...' : 'Save Product & Preorder Settings'}
+                    </button>
+                  </div>
+
+                  {/* Stock Alert */}
+                  {form.stock && parseInt(form.stock) < 10 && (
+                    <div className="alert alert-warning mt-4">
+                      <i className="bi bi-exclamation-triangle me-2"></i>
+                      <strong>Low Stock!</strong> Consider restocking soon.
+                    </div>
+                  )}
+
+                  {form.stock && parseInt(form.stock) === 0 && (
+                    <div className="alert alert-danger mt-3">
+                      <i className="bi bi-x-circle me-2"></i>
+                      <strong>Out of Stock!</strong> This product is unavailable.
+                    </div>
+                  )}
+                </form>
               )}
             </div>
           </div>

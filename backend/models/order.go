@@ -487,15 +487,19 @@ func GetUserOrders(userID string) ([]Order, error) {
 func GetOrderByID(orderID int) (*Order, error) {
 	var o Order
 	var senderID, deliveryType, address sql.NullString
-	var totalAmount sql.NullFloat64
+	var totalAmount, subtotal, discount, deliveryFee sql.NullFloat64
 
-	// Full query with all fields needed for tracking
+	// Full query with all fields needed for order details
 	err := configs.DB.QueryRow(
 		`SELECT id, customer_name, status, sender_id, delivery_type, address, 
+		        COALESCE(subtotal, 0) as subtotal,
+		        COALESCE(discount, 0) as discount,
+		        COALESCE(delivery_fee, 0) as delivery_fee,
 		        COALESCE(total_amount, 0) as total_amount, created_at 
 		 FROM orders WHERE id = $1`,
 		orderID,
-	).Scan(&o.ID, &o.CustomerName, &o.Status, &senderID, &deliveryType, &address, &totalAmount, &o.CreatedAt)
+	).Scan(&o.ID, &o.CustomerName, &o.Status, &senderID, &deliveryType, &address,
+		&subtotal, &discount, &deliveryFee, &totalAmount, &o.CreatedAt)
 
 	if err != nil {
 		return nil, err
@@ -515,6 +519,15 @@ func GetOrderByID(orderID int) (*Order, error) {
 	}
 	if totalAmount.Valid {
 		o.TotalAmount = totalAmount.Float64
+	}
+	if subtotal.Valid {
+		o.Subtotal = subtotal.Float64
+	}
+	if discount.Valid {
+		o.Discount = discount.Float64
+	}
+	if deliveryFee.Valid {
+		o.DeliveryFee = deliveryFee.Float64
 	}
 
 	// Load items (this has the product images)

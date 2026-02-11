@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -51,6 +52,17 @@ func ShowWebviewOrderForm(userID string) {
 		msg = "🍰 ကျွန်ုပ်တို့၏ စတိုးအသေးမှ မှာယူပါ!"
 	}
 
+	useExtensions := true
+	if s := strings.TrimSpace(os.Getenv("WEBVIEW_MESSENGER_EXTENSIONS")); s != "" {
+		switch strings.ToLower(s) {
+		case "0", "false", "no":
+			useExtensions = false
+		}
+	}
+	if u, err := url.Parse(baseURL); err != nil || u.Scheme != "https" || u.Host == "" {
+		useExtensions = false
+	}
+
 	// Create button that opens webview INSIDE Messenger
 	// Using full height as per Facebook documentation
 	buttons := []Button{
@@ -58,7 +70,7 @@ func ShowWebviewOrderForm(userID string) {
 			Type:                "web_url",
 			Title:               "🛒 Open Menu",
 			URL:                 webviewURL,
-			MessengerExtensions: false,
+			MessengerExtensions: useExtensions,
 			WebviewHeightRatio:  "full",
 		},
 	}

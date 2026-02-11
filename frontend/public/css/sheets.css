@@ -136,6 +136,16 @@
     background: var(--primary-hover);
 }
 
+.sheet-btn.danger {
+    background: #fef2f2;
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.sheet-btn.danger:hover {
+    background: #fee2e2;
+}
+
 .sheet-btn svg {
     width: 16px;
     height: 16px;
@@ -660,25 +670,31 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: var(--radius-full);
     border: none;
-    background: var(--gray-200);
+    background: var(--gray-100);
     color: var(--gray-500);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all var(--transition-fast);
-    opacity: 0;
-}
-
-.cart-item:hover .cart-item-remove {
     opacity: 1;
 }
 
-.cart-item-remove:hover {
+@media (hover: hover) and (pointer: fine) {
+    .cart-item-remove {
+        opacity: 0;
+    }
+    .cart-item:hover .cart-item-remove {
+        opacity: 1;
+    }
+}
+
+.cart-item-remove:hover,
+.cart-item-remove:active {
     background: #fecaca;
     color: #dc2626;
 }

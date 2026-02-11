@@ -82,6 +82,21 @@ async function fetchStockStatus(productIds) {
 
 async function loadProducts() {
     window.productsLoadError = '';
+    // Show skeleton loaders while fetching
+    const productsEl = document.getElementById('products');
+    if (productsEl) {
+        productsEl.innerHTML = Array.from({ length: 4 }, () => `
+            <div class="product-skeleton">
+                <div class="skeleton-thumb"></div>
+                <div class="skeleton-info">
+                    <div class="skeleton-line short"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line shorter"></div>
+                </div>
+                <div class="skeleton-price"></div>
+            </div>
+        `).join('');
+    }
     try {
         const res = await fetch('/api/products?limit=50&sort_by=created_at&sort_dir=DESC&status=active');
         if (!res.ok) {
@@ -127,6 +142,743 @@ async function loadProducts() {
         }
     }
     return window.products;
+}
+
+function getSelectedPreorderOption(name) {
+    const selected = document.querySelector(`input[name="${name}"]:checked`);
+    return selected ? String(selected.value || '').trim() : '';
+}
+
+function syncPreorderOptionChips(name) {
+    document.querySelectorAll(`input[name="${name}"]`).forEach((input) => {
+        const chip = input.closest('.preorder-option-chip');
+        if (!chip) return;
+        chip.classList.toggle('selected', !!input.checked);
+    });
+}
+
+const fallbackPreorderOptions = {
+    sizes: ['6 inch', '8 inch', '10 inch'],
+    layers: ['1 layer', '2 layers', '3 layers'],
+    creams: ['Buttercream', 'Fresh cream', 'Cream cheese', 'Chocolate ganache'],
+    flavors: ['Vanilla', 'Chocolate', 'Red Velvet', 'Matcha', 'Strawberry', 'Taro']
+};
+
+function renderPreorderFlavorOptions(values) {
+    const select = document.getElementById('preorderFlavor');
+    if (!select) return;
+    const prev = String(select.value || '').trim();
+    select.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select flavor';
+    select.appendChild(placeholder);
+    const list = Array.isArray(values) ? values : [];
+    list.forEach((value) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = value;
+        if (prev && prev === value) opt.selected = true;
+        select.appendChild(opt);
+    });
+    if (!select.value) {
+        select.value = '';
+    }
+}
+
+function renderPreorderOptionChips(containerId, name, values) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const prev = getSelectedPreorderOption(name);
+    const list = Array.isArray(values) ? values : [];
+    container.innerHTML = '';
+    list.forEach((value) => {
+        const label = document.createElement('label');
+        label.className = 'preorder-option-chip';
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = name;
+        input.value = value;
+        if (prev && prev === value) input.checked = true;
+        input.addEventListener('change', () => {
+            syncPreorderOptionChips(name);
+            updatePreorderPriceSummary();
+        });
+        const span = document.createElement('span');
+        span.textContent = value.replace(' inch', '"');
+        label.appendChild(input);
+        label.appendChild(span);
+        container.appendChild(label);
+    });
+    syncPreorderOptionChips(name);
+}
+
+function getTodayDateKey() {
+    const d = new Date();
+    const pad = (v) => String(v).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function formatDateShort(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return dateStr;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[d.getMonth()]} ${d.getDate()}`;
+}
+
+function getPreorderPeriodText(settings) {
+    const start = settings?.start_date || '';
+    const end = settings?.end_date || '';
+    if (start && end) return `Available ${formatDateShort(start)} – ${formatDateShort(end)}`;
+    if (start) return `Available from ${formatDateShort(start)}`;
+    if (end) return `Available until ${formatDateShort(end)}`;
+    return 'Available now';
+}
+window.getPreorderPeriodText = getPreorderPeriodText;
+
+function isPreorderWindowEnded(settings) {
+    const end = settings?.end_date || '';
+    if (!end) return false;
+    return end < getTodayDateKey();
+}
+
+function isPreorderWindowActive(settings) {
+    if (!settings) return true;
+    const today = getTodayDateKey();
+    const start = settings.start_date || '';
+    const end = settings.end_date || '';
+    if (start && today < start) return false;
+    if (end && today > end) return false;
+    return true;
+}
+
+function applyPreorderDateRange(settings) {
+    const dateEl = document.getElementById('preorderDate');
+    if (!dateEl) return;
+    const start = settings?.start_date || '';
+    const end = settings?.end_date || '';
+    const today = getTodayDateKey();
+    // Preorders must be for a future date (at least tomorrow)
+    const tomorrow = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        const pad = (v) => String(v).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    })();
+    // Minimum date: the later of tomorrow or the admin start_date
+    const effectiveMin = start && start > tomorrow ? start : tomorrow;
+    dateEl.setAttribute('min', effectiveMin);
+    // If admin set an end_date, cap there; otherwise remove the max entirely
+    if (end && end >= effectiveMin) {
+        dateEl.setAttribute('max', end);
+    } else {
+        dateEl.removeAttribute('max');
+    }
+    if (isPreorderWindowEnded(settings)) {
+        dateEl.value = '';
+        return;
+    }
+    if (!dateEl.value || dateEl.value < effectiveMin || (end && end >= effectiveMin && dateEl.value > end)) {
+        dateEl.value = effectiveMin;
+    }
+}
+
+function updatePreorderOptionsUI(settings, fallback) {
+    const opts = settings || {};
+    const ended = isPreorderWindowEnded(opts);
+    const sizes = Array.isArray(opts.sizes) && opts.sizes.length ? opts.sizes : (fallback?.sizes || []);
+    const layers = Array.isArray(opts.layers) && opts.layers.length ? opts.layers : (fallback?.layers || []);
+    const creams = Array.isArray(opts.creams) && opts.creams.length ? opts.creams : (fallback?.creams || []);
+    const flavors = Array.isArray(opts.flavors) && opts.flavors.length ? opts.flavors : (fallback?.flavors || []);
+    renderPreorderFlavorOptions(flavors);
+    renderPreorderOptionChips('preorderSizeOptions', 'preorderSize', sizes);
+    renderPreorderOptionChips('preorderLayerOptions', 'preorderLayer', layers);
+    renderPreorderOptionChips('preorderCreamOptions', 'preorderCream', creams);
+    applyPreorderDateRange(opts);
+    window.currentPreorderSettings = { ...opts, enabled: opts.enabled !== false && !ended };
+    updatePreorderPriceSummary();
+    // Update the custom cake notice with actual period dates
+    const noticeEl = document.getElementById('customCakeNoticeText');
+    if (noticeEl) {
+        const periodText = getPreorderPeriodText(opts);
+        noticeEl.innerHTML = `Order window: <strong>${periodText}</strong>. Choose your options below.`;
+    }
+}
+
+async function updatePreorderOptionsForProduct(productId) {
+    if (!productId) {
+        updatePreorderOptionsUI({}, fallbackPreorderOptions);
+        return;
+    }
+    if (!window.preorderProductSettingsCache) {
+        window.preorderProductSettingsCache = {};
+    }
+    if (window.preorderProductSettingsCache[productId]) {
+        updatePreorderOptionsUI(window.preorderProductSettingsCache[productId], fallbackPreorderOptions);
+        return;
+    }
+    try {
+        const baseUrl = window.location.origin || '';
+        const res = await fetch(`${baseUrl}/api/preorder-products/${productId}/settings`);
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        window.preorderProductSettingsCache[productId] = data || {};
+        updatePreorderOptionsUI(data || {}, fallbackPreorderOptions);
+    } catch (e) {
+        updatePreorderOptionsUI({}, fallbackPreorderOptions);
+    }
+}
+
+async function filterPreorderProductsByDate(products) {
+    const list = Array.isArray(products) ? products : [];
+    if (!list.length) return list;
+    if (!window.preorderProductSettingsCache) {
+        window.preorderProductSettingsCache = {};
+    }
+    const baseUrl = window.location.origin || '';
+    const settingsList = await Promise.all(list.map(async (product) => {
+        const id = product?.id;
+        if (!id) return null;
+        if (window.preorderProductSettingsCache[id]) {
+            return window.preorderProductSettingsCache[id];
+        }
+        try {
+            const res = await fetch(`${baseUrl}/api/preorder-products/${id}/settings`);
+            if (!res.ok) return null;
+            const data = await res.json();
+            window.preorderProductSettingsCache[id] = data || {};
+            return data || {};
+        } catch (e) {
+            return null;
+        }
+    }));
+    return list.filter((product, idx) => {
+        const settings = settingsList[idx];
+        return isPreorderWindowActive(settings);
+    });
+}
+
+function getSelectedPreorderProduct(products) {
+    const list = Array.isArray(products) ? products : (window.preorderSettings?.products || []);
+    const selectedId = window.selectedPreorderProductId;
+    if (!selectedId) return null;
+    return list.find((p) => String(p.id) === String(selectedId)) || null;
+}
+
+function updatePreorderProductSelection() {
+    const listEl = document.getElementById('preorderProductList');
+    if (!listEl) return;
+    const selectedId = window.selectedPreorderProductId;
+    listEl.querySelectorAll('.preorder-product-card').forEach((card) => {
+        const cardId = card.dataset.productId;
+        const isSelected = !!selectedId && String(cardId) === String(selectedId);
+        card.classList.toggle('selected', isSelected);
+        card.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+    });
+}
+
+function selectPreorderProduct(productId) {
+    if (!productId) return;
+    window.selectedPreorderProductId = productId;
+    updatePreorderProductSelection();
+    updatePreorderOptionsForProduct(productId);
+    updatePreorderPriceSummary();
+}
+
+function formatPendingSchedule(sched) {
+    if (!sched || !sched.date || !sched.time) return 'Not selected';
+    const when = new Date(`${sched.date}T${sched.time}:00`);
+    if (Number.isNaN(when.getTime())) return `${sched.date} ${sched.time}`;
+    return when.toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function refreshPreorderScheduleDisplay() {
+    const dateEl = document.getElementById('preorderDate');
+    const timeEl = document.getElementById('preorderTime');
+    if (!dateEl) return;
+    const sched = window.getPendingSchedule ? window.getPendingSchedule() : null;
+    if (sched && sched.date) dateEl.value = sched.date;
+    if (sched && sched.time && timeEl) timeEl.value = sched.time;
+}
+
+// ─── Custom Cake Cart (multi-cake support) ──────────────────
+window.customCakeCart = [];
+
+function addCakeToCart() {
+    const flavor = document.getElementById('preorderFlavor')?.value || '';
+    const size = getSelectedPreorderOption('preorderSize');
+    const layers = getSelectedPreorderOption('preorderLayer');
+    const cream = getSelectedPreorderOption('preorderCream');
+    const message = (document.getElementById('preorderMessage')?.value || '').trim();
+    const notes = (document.getElementById('preorderNotes')?.value || '').trim();
+    const product = getSelectedPreorderProduct();
+
+    if (!product) { window.showToast && window.showToast('Pick a cake first'); return; }
+    if (!flavor) { window.showToast && window.showToast('Pick a flavor'); return; }
+    if (!size) { window.showToast && window.showToast('Pick a size'); return; }
+    if (!layers) { window.showToast && window.showToast('Pick layers'); return; }
+    if (!cream) { window.showToast && window.showToast('Pick a cream type'); return; }
+
+    const priceData = getPreorderPriceData();
+
+    window.customCakeCart.push({
+        id: Date.now(),
+        product, flavor, size, layers, cream, message, notes,
+        price: priceData.total,
+        sizeExtra: priceData.sizeExtra,
+        layerExtra: priceData.layerExtra,
+        creamExtra: priceData.creamExtra,
+    });
+
+    // Reset form for next cake
+    const flavorEl = document.getElementById('preorderFlavor');
+    if (flavorEl) flavorEl.value = '';
+    const msgEl = document.getElementById('preorderMessage');
+    if (msgEl) msgEl.value = '';
+    const notesEl = document.getElementById('preorderNotes');
+    if (notesEl) notesEl.value = '';
+    document.querySelectorAll('input[name="preorderSize"]').forEach(r => r.checked = false);
+    document.querySelectorAll('input[name="preorderLayer"]').forEach(r => r.checked = false);
+    document.querySelectorAll('input[name="preorderCream"]').forEach(r => r.checked = false);
+    syncPreorderOptionChips('preorderSize');
+    syncPreorderOptionChips('preorderLayer');
+    syncPreorderOptionChips('preorderCream');
+    updatePreorderPriceSummary();
+
+    renderCustomCakeCart();
+    window.showToast && window.showToast(`${product.name} added!`, 'success');
+}
+
+function removeCakeFromCart(cakeId) {
+    window.customCakeCart = window.customCakeCart.filter(c => c.id !== cakeId);
+    renderCustomCakeCart();
+}
+
+function getCustomCakeCartTotal() {
+    return window.customCakeCart.reduce((sum, c) => sum + (c.price || 0), 0);
+}
+
+function renderCustomCakeCart() {
+    const section = document.getElementById('customCakeCartSection');
+    const scheduleSection = document.getElementById('customCakeScheduleSection');
+    const submitBtn = document.getElementById('preorderSubmitBtn');
+    const listEl = document.getElementById('customCakeCartList');
+    const countEl = document.getElementById('customCakeCartCount');
+    const totalEl = document.getElementById('customCakeCartTotal');
+    const addBtnText = document.getElementById('preorderAddCakeText');
+    const cart = window.customCakeCart;
+
+    if (!section || !listEl) return;
+
+    // Update "Add" button label based on cart state
+    if (addBtnText) {
+        addBtnText.textContent = cart.length > 0 ? '+ Add another cake' : 'Add to cart';
+    }
+
+    if (cart.length === 0) {
+        section.style.display = 'none';
+        if (scheduleSection) scheduleSection.style.display = 'none';
+        if (submitBtn) submitBtn.style.display = 'none';
+        return;
+    }
+
+    section.style.display = '';
+    if (scheduleSection) scheduleSection.style.display = '';
+    if (submitBtn) submitBtn.style.display = '';
+    if (countEl) countEl.textContent = `${cart.length} cake${cart.length > 1 ? 's' : ''}`;
+    if (totalEl) totalEl.textContent = `$${getCustomCakeCartTotal().toFixed(2)}`;
+
+    const submitText = document.getElementById('preorderSubmitText');
+    if (submitText) {
+        submitText.textContent = `Order ${cart.length} Cake${cart.length > 1 ? 's' : ''} — $${getCustomCakeCartTotal().toFixed(2)}`;
+    }
+
+    listEl.innerHTML = '';
+    cart.forEach(cake => {
+        const card = document.createElement('div');
+        card.className = 'preorder-cart-card';
+
+        const img = document.createElement('img');
+        img.className = 'preorder-cart-card-img';
+        img.src = cake.product?.image_url || 'https://images.unsplash.com/photo-1603532648955-039310d9ed75?w=80&h=80&fit=crop';
+        img.alt = cake.product?.name || 'Cake';
+
+        const info = document.createElement('div');
+        info.className = 'preorder-cart-card-info';
+        const nameEl = document.createElement('div');
+        nameEl.className = 'preorder-cart-card-name';
+        nameEl.textContent = `${cake.product?.name || 'Custom Cake'} — ${cake.size}`;
+        const metaEl = document.createElement('div');
+        metaEl.className = 'preorder-cart-card-meta';
+        metaEl.textContent = `${cake.flavor} · ${cake.layers} · ${cake.cream}`;
+        info.appendChild(nameEl);
+        info.appendChild(metaEl);
+
+        const priceEl = document.createElement('div');
+        priceEl.className = 'preorder-cart-card-price';
+        priceEl.textContent = `$${cake.price.toFixed(2)}`;
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'preorder-cart-card-remove';
+        removeBtn.innerHTML = '&#x2715;';
+        removeBtn.title = 'Remove';
+        removeBtn.onclick = () => removeCakeFromCart(cake.id);
+
+        card.appendChild(img);
+        card.appendChild(info);
+        card.appendChild(priceEl);
+        card.appendChild(removeBtn);
+        listEl.appendChild(card);
+    });
+}
+
+function openPreorderSheet() {
+    if (typeof openSheet === 'function') {
+        openSheet('preorderSheet');
+    }
+    syncPreorderOptionChips('preorderSize');
+    syncPreorderOptionChips('preorderLayer');
+    syncPreorderOptionChips('preorderCream');
+    refreshPreorderScheduleDisplay();
+    updatePreorderOptionsForProduct(window.selectedPreorderProductId);
+    updatePreorderPriceSummary();
+    renderCustomCakeCart();
+
+    if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+}
+
+function formatPreorderPrice(value) {
+    const num = Number(value || 0);
+    return `$${num.toFixed(2)}`;
+}
+
+function normalizePreorderKey(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function resolvePreorderOptionPrice(settings, key, value) {
+    const map = settings && typeof settings === 'object' ? settings[key] : null;
+    if (!map || typeof map !== 'object') return 0;
+    const target = normalizePreorderKey(value);
+    let matched = 0;
+    Object.keys(map).forEach((name) => {
+        if (normalizePreorderKey(name) === target) {
+            const parsed = Number(map[name]);
+            if (Number.isFinite(parsed)) matched = parsed;
+        }
+    });
+    return matched;
+}
+
+function formatPreorderOptionLabel(label, value) {
+    if (!value) return `${label} (—)`;
+    const display = String(value).replace(' inch', '"');
+    return `${label} (${display})`;
+}
+
+function getPreorderPriceData() {
+    const product = getSelectedPreorderProduct();
+    const basePrice = Number(product?.price) || 0;
+    const size = getSelectedPreorderOption('preorderSize');
+    const layers = getSelectedPreorderOption('preorderLayer');
+    const cream = getSelectedPreorderOption('preorderCream');
+    const settings = window.currentPreorderSettings || {};
+    const sizeExtra = resolvePreorderOptionPrice(settings, 'size_prices', size);
+    const layerExtra = resolvePreorderOptionPrice(settings, 'layer_prices', layers);
+    const creamExtra = resolvePreorderOptionPrice(settings, 'cream_prices', cream);
+    const total = basePrice + sizeExtra + layerExtra + creamExtra;
+    return {
+        product,
+        basePrice,
+        size,
+        layers,
+        cream,
+        sizeExtra,
+        layerExtra,
+        creamExtra,
+        total
+    };
+}
+
+function updatePreorderPriceSummary() {
+    const data = getPreorderPriceData();
+    const addBtnText = document.getElementById('preorderAddCakeText');
+    const cart = window.customCakeCart || [];
+    const total = Number.isFinite(data.total) ? data.total : 0;
+    if (addBtnText) {
+        const label = cart.length > 0 ? '+ Add another cake' : 'Add to cart';
+        addBtnText.textContent = total > 0 ? `${label} — ${formatPreorderPrice(total)}` : label;
+    }
+}
+
+window.updatePreorderPriceSummary = updatePreorderPriceSummary;
+
+function updatePreorderAdCopy(products) {
+    const titleEl = document.getElementById('preorderAdTitle');
+    const subtitleEl = document.getElementById('preorderAdSubtitle');
+    if (!subtitleEl) return;
+    const count = Array.isArray(products) ? products.length : 0;
+    if (count > 0) {
+        subtitleEl.textContent = `${count} cakes available · Customize & order`;
+        if (titleEl) titleEl.textContent = '🎂 Custom Cakes';
+        return;
+    }
+    subtitleEl.textContent = 'Design your cake · Made to order';
+    if (titleEl) titleEl.textContent = '🎂 Custom Cakes';
+}
+
+function renderPreorderProductList(products) {
+    const listEl = document.getElementById('preorderProductList');
+    if (!listEl) return;
+    const countEl = document.getElementById('preorderProductCount');
+    const list = Array.isArray(products) ? products : [];
+    if (countEl) countEl.textContent = list.length ? `${list.length} items` : '';
+    listEl.innerHTML = '';
+    if (window.selectedPreorderProductId && !list.some((p) => String(p.id) === String(window.selectedPreorderProductId))) {
+        window.selectedPreorderProductId = null;
+    }
+    if (!window.selectedPreorderProductId && list.length) {
+        window.selectedPreorderProductId = list[0].id;
+    }
+    if (!list.length) {
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'preorder-product-empty';
+        emptyEl.textContent = 'No custom cakes available yet';
+        listEl.appendChild(emptyEl);
+        return;
+    }
+    list.forEach((product) => {
+        const card = document.createElement('div');
+        card.className = 'preorder-product-card';
+        card.dataset.productId = String(product.id || '');
+        card.setAttribute('role', 'button');
+        card.setAttribute('tabindex', '0');
+        const img = document.createElement('img');
+        img.className = 'preorder-product-thumb';
+        img.alt = product.name || 'Cake';
+        img.loading = 'lazy';
+        img.src = product.image_url || 'https://images.unsplash.com/photo-1603532648955-039310d9ed75?w=220&h=220&fit=crop';
+        const info = document.createElement('div');
+        info.className = 'preorder-product-info';
+        const name = document.createElement('div');
+        name.className = 'preorder-product-name';
+        name.textContent = product.name || 'Cake';
+        const meta = document.createElement('div');
+        meta.className = 'preorder-product-meta';
+        meta.textContent = product.category || '';
+        info.appendChild(name);
+        info.appendChild(meta);
+        const price = document.createElement('div');
+        price.className = 'preorder-product-price';
+        price.textContent = formatPreorderPrice(product.price);
+        card.appendChild(img);
+        card.appendChild(info);
+        card.appendChild(price);
+        card.addEventListener('click', () => {
+            selectPreorderProduct(product.id);
+        });
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                selectPreorderProduct(product.id);
+            }
+        });
+        listEl.appendChild(card);
+    });
+    updatePreorderProductSelection();
+    updatePreorderOptionsForProduct(window.selectedPreorderProductId);
+}
+
+async function loadPreorderSettings(ad, isHidden) {
+    try {
+        const baseUrl = window.location.origin || '';
+        const res = await fetch(`${baseUrl}/api/preorder-settings`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const enabled = !!data.enabled;
+        let products = Array.isArray(data.products) ? data.products : [];
+        const updatedAt = data.updated_at || data.updatedAt || '';
+        let hidden = isHidden;
+        if (updatedAt) {
+            let prev = '';
+            try {
+                prev = localStorage.getItem('bf_preorder_settings_updated_at') || '';
+            } catch (e) {}
+            if (String(updatedAt) !== prev) {
+                try {
+                    localStorage.setItem('bf_preorder_settings_updated_at', String(updatedAt));
+                    localStorage.removeItem('bf_hide_preorder_ad');
+                } catch (e) {}
+                hidden = false;
+            }
+        }
+        products = await filterPreorderProductsByDate(products);
+        window.preorderSettings = { enabled, products };
+        renderPreorderProductList(products);
+        updatePreorderAdCopy(products);
+        if (!enabled) {
+            ad.style.display = 'none';
+            if (typeof window.adjustSafePadding === 'function') window.adjustSafePadding();
+            return;
+        }
+        ad.style.display = hidden ? 'none' : '';
+        if (typeof window.adjustSafePadding === 'function') window.adjustSafePadding();
+    } catch (e) {}
+}
+
+function initPreorderUI() {
+    const ad = document.getElementById('preorderAd');
+    if (!ad) return;
+
+    let isHidden = false;
+    try {
+        isHidden = localStorage.getItem('bf_hide_preorder_ad') === '1';
+    } catch (e) {}
+
+    ad.style.display = isHidden ? 'none' : '';
+
+    const closeBtn = document.getElementById('preorderAdClose');
+    if (closeBtn && closeBtn.dataset.wired !== '1') {
+        closeBtn.dataset.wired = '1';
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                localStorage.setItem('bf_hide_preorder_ad', '1');
+            } catch (err) {}
+            ad.style.display = 'none';
+            if (typeof window.adjustSafePadding === 'function') window.adjustSafePadding();
+        });
+    }
+
+    const openEl = document.getElementById('preorderAdOpen');
+    if (openEl && openEl.dataset.wired !== '1') {
+        openEl.dataset.wired = '1';
+        openEl.addEventListener('click', () => openPreorderSheet());
+        openEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') openPreorderSheet();
+        });
+    }
+
+    const cta = document.getElementById('preorderCustomizeBtn');
+    if (cta && cta.dataset.wired !== '1') {
+        cta.dataset.wired = '1';
+        cta.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            openPreorderSheet();
+        });
+    }
+
+    const cancelBtn = document.getElementById('preorderCancel');
+    if (cancelBtn && cancelBtn.dataset.wired !== '1') {
+        cancelBtn.dataset.wired = '1';
+        cancelBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            window.customCakeCart = [];
+            if (typeof closeSheets === 'function') closeSheets();
+        });
+    }
+
+    // "Add Cake" button — adds configured cake to the cart
+    const addCakeBtn = document.getElementById('preorderAddCakeBtn');
+    if (addCakeBtn && addCakeBtn.dataset.wired !== '1') {
+        addCakeBtn.dataset.wired = '1';
+        addCakeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            addCakeToCart();
+        });
+    }
+
+    // "Order Custom Cakes" submit button — validates date/time then sends to delivery form
+    const submitBtn = document.getElementById('preorderSubmitBtn');
+    if (submitBtn && submitBtn.dataset.wired !== '1') {
+        submitBtn.dataset.wired = '1';
+        submitBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            if (window.customCakeCart.length === 0) {
+                window.showToast && window.showToast('Add at least one cake first');
+                return;
+            }
+
+            // Read date & time
+            const preorderDate = document.getElementById('preorderDate')?.value || '';
+            const preorderTime = document.getElementById('preorderTime')?.value || '';
+            if (!preorderDate || !preorderTime) {
+                window.showToast && window.showToast('Select pick up date & time');
+                return;
+            }
+            const todayKey = getTodayDateKey();
+            if (preorderDate <= todayKey) {
+                window.showToast && window.showToast('Custom cakes need at least 1 day. Pick a future date.');
+                return;
+            }
+            const [hh] = preorderTime.split(':').map(Number);
+            if (hh < 8 || hh >= 20) {
+                window.showToast && window.showToast('Pick a time between 8 AM – 8 PM');
+                return;
+            }
+
+            if (window.currentPreorderSettings && window.currentPreorderSettings.enabled === false) {
+                window.showToast && window.showToast('Preorder is unavailable');
+                return;
+            }
+            if (window.currentPreorderSettings && isPreorderWindowEnded(window.currentPreorderSettings)) {
+                window.showToast && window.showToast('Preorder window has ended');
+                return;
+            }
+            if (window.currentPreorderSettings) {
+                const start = window.currentPreorderSettings.start_date || '';
+                const end = window.currentPreorderSettings.end_date || '';
+                if ((start && preorderDate < start) || (end && preorderDate > end)) {
+                    window.showToast && window.showToast('Pick a date within the available window');
+                    return;
+                }
+            }
+
+            // Save all cakes as pending preorder
+            window.__pendingPreorder = {
+                cakes: window.customCakeCart.slice(),
+                scheduleDate: preorderDate,
+                scheduleTime: preorderTime
+            };
+
+            window.customCakeCart = [];
+            if (typeof closeSheets === 'function') closeSheets();
+            if (typeof window.openDeliveryForm === 'function') window.openDeliveryForm();
+            window.showToast && window.showToast('Now fill in your delivery details', 'info');
+        });
+    }
+    ['preorderSize', 'preorderLayer', 'preorderCream'].forEach((name) => {
+        document.querySelectorAll(`input[name="${name}"]`).forEach((input) => {
+            if (input.dataset.wired === '1') return;
+            input.dataset.wired = '1';
+            input.addEventListener('change', () => {
+                syncPreorderOptionChips(name);
+                updatePreorderPriceSummary();
+            });
+        });
+    });
+
+    const scheduleConfirm = document.getElementById('scheduleConfirm');
+    if (scheduleConfirm && scheduleConfirm.dataset.preorderWired !== '1') {
+        scheduleConfirm.dataset.preorderWired = '1';
+        scheduleConfirm.addEventListener('click', () => {
+            setTimeout(() => refreshPreorderScheduleDisplay(), 0);
+        });
+    }
+
+    refreshPreorderScheduleDisplay();
+    syncPreorderOptionChips('preorderSize');
+    syncPreorderOptionChips('preorderLayer');
+    syncPreorderOptionChips('preorderCream');
+    updatePreorderPriceSummary();
+    renderPreorderProductList([]);
+    updatePreorderAdCopy([]);
+    loadPreorderSettings(ad, isHidden);
 }
 
 /**
@@ -834,3 +1586,4 @@ window.clearFilters = clearFilters;
 window.fetchStockStatus = fetchStockStatus;
 window.CATEGORIES = CATEGORIES;
 window.loadLatestReviews = loadLatestReviews;
+window.initPreorderUI = initPreorderUI;
