@@ -75,7 +75,7 @@ export default function OrdersPage() {
       id: order.id,
       customer: order.customer_name || 'Customer',
       cake,
-      time: new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}),
+      time: new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       timestamp: Date.now(),
       isRead: false
     };
@@ -137,7 +137,7 @@ export default function OrdersPage() {
         // Update seen orders set and save to localStorage
         const allOrderIds = incomingOrders.map(o => o.id);
         updateSeenOrders(allOrderIds);
-        
+
         if (!initializedRef.current) {
           initializedRef.current = true;
         }
@@ -556,7 +556,7 @@ export default function OrdersPage() {
       { key: 'ready', label: t('ready'), icon: 'check-circle' },
       { key: 'delivered', label: t('delivered'), icon: 'truck' }
     ];
-    const normalized = currentStatus === 'scheduled' ? 'pending' : currentStatus;
+    const normalized = (currentStatus === 'scheduled' || currentStatus === 'confirmed') ? 'pending' : currentStatus;
     const currentIndex = steps.findIndex(s => s.key === normalized);
     return steps.map((step, idx) => ({
       ...step,
@@ -566,7 +566,7 @@ export default function OrdersPage() {
   };
 
   const getNextAction = (status) => {
-    const normalized = status === 'scheduled' ? 'pending' : status;
+    const normalized = (status === 'scheduled' || status === 'confirmed') ? 'pending' : status;
     const actions = {
       pending: { label: t('startPreparing'), nextStatus: 'preparing', icon: 'egg-fried', color: 'primary' },
       preparing: { label: t('markAsReady'), nextStatus: 'ready', icon: 'check-circle', color: 'info' },
@@ -589,7 +589,7 @@ export default function OrdersPage() {
       <div className="d-flex vh-100 overflow-hidden bg-soft">
         <Sidebar open={sidebarOpen} toggle={() => setSidebarOpen(o => !o)} />
         <div className="flex-grow-1 d-flex flex-column overflow-hidden">
-          <TopNavbar 
+          <TopNavbar
             toggleSidebar={() => setSidebarOpen(o => !o)}
             notifications={notifications}
             unreadCount={unreadCount}
@@ -609,21 +609,21 @@ export default function OrdersPage() {
               onView={(id) => markAsRead(id)}
             />
             <div className="container-fluid px-4 py-4">
-              
+
               {/* Notification Toast */}
               {notification.show && (
-                <div className={`alert alert-${notification.type} alert-dismissible fade show position-fixed top-0 end-0 m-4`} style={{zIndex: 9999, maxWidth: '400px'}} role="alert">
+                <div className={`alert alert-${notification.type} alert-dismissible fade show position-fixed top-0 end-0 m-4`} style={{ zIndex: 9999, maxWidth: '400px' }} role="alert">
                   <strong>{notification.message}</strong>
-                  <button type="button" className="btn-close" onClick={() => setNotification({show: false, message: '', type: ''})}></button>
+                  <button type="button" className="btn-close" onClick={() => setNotification({ show: false, message: '', type: '' })}></button>
                 </div>
               )}
 
-              
+
 
               <div className="card border-0 shadow-sm mb-4">
                 <div className="card-body">
                   <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-                    <h5 className="card-title mb-0"><i className="bi bi-funnel me-2"/>{t('filterOrders')}</h5>
+                    <h5 className="card-title mb-0"><i className="bi bi-funnel me-2" />{t('filterOrders')}</h5>
                     <button type="button" className="btn btn-outline-success btn-sm" onClick={handleExportExcel}>
                       <i className="bi bi-file-earmark-spreadsheet me-1"></i>Export Excel
                     </button>
@@ -631,7 +631,7 @@ export default function OrdersPage() {
                   <div className="d-flex flex-wrap align-items-center gap-3">
                     <div className="btn-group flex-wrap" role="group">
                       {filters.map(f => (
-                        <button key={f.key} onClick={() => setFilter(f.key)} className={`btn ${filter===f.key ? 'btn-dark' : 'btn-outline-secondary'}`}>
+                        <button key={f.key} onClick={() => setFilter(f.key)} className={`btn ${filter === f.key ? 'btn-dark' : 'btn-outline-secondary'}`}>
                           <i className={`bi bi-${f.icon} me-1`} />{t(f.labelKey)}
                         </button>
                       ))}
@@ -709,7 +709,7 @@ export default function OrdersPage() {
               {loading && <div className="text-center py-5"><div className="spinner-border text-primary" role="status" /><p className="mt-3 text-muted">{t('loadingOrders')}</p></div>}
 
               {!loading && filteredCount === 0 && !error && (
-                <div className="card border-0 shadow-sm"><div className="card-body text-center py-5"><i className="bi bi-inbox fs-1 text-muted mb-3"/><h4 className="text-muted">{t('noOrdersFound')}</h4><p className="text-secondary">{filter !== 'all' ? t('noFilteredOrders').replace('{filter}', t(filter)) : t('waitingForOrders')}</p></div></div>
+                <div className="card border-0 shadow-sm"><div className="card-body text-center py-5"><i className="bi bi-inbox fs-1 text-muted mb-3" /><h4 className="text-muted">{t('noOrdersFound')}</h4><p className="text-secondary">{filter !== 'all' ? t('noFilteredOrders').replace('{filter}', t(filter)) : t('waitingForOrders')}</p></div></div>
               )}
 
               <div className="row g-4">
@@ -747,236 +747,237 @@ export default function OrdersPage() {
                       const normalizedStatus = order.status === 'scheduled' ? 'pending' : order.status;
                       const isOlderPending = normalizedStatus === 'pending' && createdAtMs && (now - createdAtMs) >= 86400000;
                       const pendingAgeLabel = isOlderPending ? `${t('pending') || 'Pending'} • ${relativeCreatedLabel}` : '';
-                      
+
                       return (
-                      <div key={order.id} className="col-12 col-xl-6">
-                    <div className={`card ${isScheduled ? 'border-start border-4 border-dark' : 'border-0'} shadow-sm h-100 order-detail-card`}>
-                      
-                      {/* Header with Order ID and Time */}
-                      <div className={`card-header ${isScheduled ? 'bg-light' : 'bg-white'} border-bottom py-3`}>
-                        <div className="d-flex justify-content-between align-items-start">
-                          <div>
-                            <h5 className="mb-1 fw-bold">Order #{order.id}</h5>
-                            {isScheduled && order.scheduled_for ? (
-                              <div>
-                                <div className="fw-semibold">
-                                  <i className="bi bi-calendar-event me-1"></i>
-                                  Scheduled for: {new Date(order.scheduled_for).toLocaleString()}
-                                </div>
-                                <small className="text-muted">Created {relativeCreatedLabel} • {createdAtLabel}</small>
-                              </div>
-                            ) : (
-                              <small className="text-muted d-flex align-items-center gap-2">
-                                <i className="bi bi-clock me-1"></i>
-                                <span className="fw-semibold text-dark">{relativeCreatedLabel}</span>
-                                <span className="text-muted">•</span>
-                                <span className="text-muted">{createdAtLabel}</span>
-                              </small>
-                            )}
-                          </div>
-                          <div className="d-flex align-items-start flex-wrap justify-content-end gap-2">
-                            <span className={`badge bg-${statusColor(order.status)} px-3 py-2`}>
-                              {isScheduled && <i className="bi bi-calendar-event me-1" />}
-                              {isScheduled ? 'SCHEDULED' : order.status.toUpperCase()}
-                              {updating === order.id && <span className="ms-2 spinner-border spinner-border-sm" />}
-                            </span>
-                            {hasItemUpdate && (
-                              <span className="badge bg-info text-dark px-3 py-2">{lastItemLabel}</span>
-                            )}
-                            {pendingAgeLabel && (
-                              <span className="badge bg-warning text-dark px-3 py-2">{pendingAgeLabel}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                        <div key={order.id} className="col-12 col-xl-6">
+                          <div className={`card ${isScheduled ? 'border-start border-4 border-dark' : 'border-0'} shadow-sm h-100 order-detail-card`}>
 
-                      <div className="card-body p-4">
-                        
-                        {/* Status Timeline */}
-                        <div className="status-timeline mb-4">
-                          <div className="d-flex justify-content-between align-items-center position-relative">
-                            <div className="progress-line position-absolute" style={{height: '2px', left: '24px', right: '24px', top: '20px', background: '#e9ecef', zIndex: 0}}>
-                              <div style={{height: '100%', width: `${(statusSteps.filter(s => s.isCompleted).length / (statusSteps.length - 1)) * 100}%`, background: '#D8A35D', transition: 'width 0.3s'}}></div>
-                            </div>
-                            {statusSteps.map((step, idx) => (
-                              <div key={step.key} className="text-center position-relative" style={{zIndex: 1, flex: 1}}>
-                                <div className={`rounded-circle d-inline-flex align-items-center justify-content-center ${step.isActive ? 'bg-primary-bake text-white' : step.isCompleted ? 'bg-success text-white' : 'bg-light text-muted'}`} style={{width: '40px', height: '40px', border: '3px solid white', boxShadow: '0 2px 8px rgba(0,0,0,0.1)'}}>
-                                  <i className={`bi bi-${step.icon} ${step.isActive || step.isCompleted ? 'fs-6' : 'fs-6'}`}></i>
-                                </div>
-                                <div className={`small mt-2 fw-${step.isActive ? 'bold' : 'normal'} ${step.isActive ? 'text-dark' : 'text-muted'}`}>{step.label}</div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Customer & Delivery Info - Side by Side */}
-                        <div className="row g-3 mb-4">
-                          <div className="col-md-6">
-                            <div className="info-card p-3 rounded" style={{background: '#FFF4EA'}}>
-                              <div className="d-flex align-items-start gap-3">
-                                <div className="rounded-circle bg-white p-2 shadow-sm">
-                                  <i className="bi bi-person-fill fs-5 text-primary-bake"></i>
-                                </div>
-                                <div className="flex-grow-1">
-                                  <small className="text-muted text-uppercase d-block mb-1" style={{fontSize: '0.7rem', letterSpacing: '0.5px'}}>{t('customerLabel')}</small>
-                                  <strong className="d-block">{order.customer_name}</strong>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="col-md-6">
-                            <div className="info-card p-3 rounded" style={{background: '#F8E8D0'}}>
-                              <div className="d-flex align-items-start gap-3">
-                                <div className="rounded-circle bg-white p-2 shadow-sm">
-                                  <i className={`bi ${order.delivery_type === 'delivery' ? 'bi-truck' : 'bi-bag'} fs-5 text-primary-bake`}></i>
-                                </div>
-                                <div className="flex-grow-1">
-                                  <small className="text-muted text-uppercase d-block mb-1" style={{fontSize: '0.7rem', letterSpacing: '0.5px'}}>{t('typeLabel')}</small>
-                                  <strong className="d-block text-capitalize">{order.delivery_type === 'delivery' ? t('deliveryLabel') : t('pickupLabel')}</strong>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Delivery Address (if applicable) */}
-                        {order.delivery_type === 'delivery' && order.address && (
-                          <div className="mb-4 p-3 rounded" style={{background: '#FCE4EC'}}>
-                            <div className="d-flex align-items-start gap-3">
-                              <i className="bi bi-geo-alt-fill text-danger mt-1"></i>
-                              <div>
-                                <small className="text-muted text-uppercase d-block mb-1" style={{fontSize: '0.7rem', letterSpacing: '0.5px'}}>{t('deliveryAddress')}</small>
-                                <strong>{order.address}</strong>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Items Section */}
-                        <div className="mb-4">
-                            <h6 className="fw-bold mb-3 text-uppercase" style={{fontSize: '0.85rem', letterSpacing: '0.5px'}}>
-                            <i className="bi bi-bag-fill me-2 text-primary-bake"></i>{t('orderItems')}
-                          </h6>
-                          <div className="items-list">
-                            {order.items && order.items.map((item, idx) => (
-                              <div key={idx} className="py-3 border-bottom">
-                                <div className="d-flex align-items-start gap-3">
-                                  {/* Product Image */}
-                                  <div className="flex-shrink-0">
-                                    <Image
-                                      src={item.image_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=80&h=80&fit=crop'}
-                                      alt={item.product}
-                                      width={56}
-                                      height={56}
-                                      className="rounded"
-                                      style={{ objectFit: 'cover', border: '1px solid #eee' }}
-                                    />
-                                  </div>
-                                  {/* Product Details */}
-                                  <div className="flex-grow-1">
-                                    <div className="d-flex justify-content-between align-items-start">
-                                      <div>
-                                        <div className="fw-semibold">{item.product}</div>
-                                        <small className="text-muted">{formatCurrency(item.price)} × {item.quantity}</small>
+                            {/* Header with Order ID and Time */}
+                            <div className={`card-header ${isScheduled ? 'bg-light' : 'bg-white'} border-bottom py-3`}>
+                              <div className="d-flex justify-content-between align-items-start">
+                                <div>
+                                  <h5 className="mb-1 fw-bold">Order #{order.id}</h5>
+                                  {isScheduled && order.scheduled_for ? (
+                                    <div>
+                                      <div className="fw-semibold">
+                                        <i className="bi bi-calendar-event me-1"></i>
+                                        Scheduled for: {new Date(order.scheduled_for).toLocaleString()}
                                       </div>
-                                      <div className="fw-bold">{formatCurrency(item.price * item.quantity)}</div>
+                                      <small className="text-muted">Created {relativeCreatedLabel} • {createdAtLabel}</small>
                                     </div>
-                                    {item.note && (
-                                      <div className="mt-2 p-2 rounded" style={{background: '#FFF9E6', fontSize: '0.85rem'}}>
-                                        <i className="bi bi-chat-left-text me-1 text-warning"></i>
-                                        <span className="text-dark">{item.note}</span>
+                                  ) : (
+                                    <small className="text-muted d-flex align-items-center gap-2">
+                                      <i className="bi bi-clock me-1"></i>
+                                      <span className="fw-semibold text-dark">{relativeCreatedLabel}</span>
+                                      <span className="text-muted">•</span>
+                                      <span className="text-muted">{createdAtLabel}</span>
+                                    </small>
+                                  )}
+                                </div>
+                                <div className="d-flex align-items-start flex-wrap justify-content-end gap-2">
+                                  <span className={`badge bg-${statusColor(order.status)} px-3 py-2`}>
+                                    {isScheduled && <i className="bi bi-calendar-event me-1" />}
+                                    {isScheduled ? 'SCHEDULED' : order.status.toUpperCase()}
+                                    {updating === order.id && <span className="ms-2 spinner-border spinner-border-sm" />}
+                                  </span>
+                                  {hasItemUpdate && (
+                                    <span className="badge bg-info text-dark px-3 py-2">{lastItemLabel}</span>
+                                  )}
+                                  {pendingAgeLabel && (
+                                    <span className="badge bg-warning text-dark px-3 py-2">{pendingAgeLabel}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="card-body p-4">
+
+                              {/* Status Timeline */}
+                              <div className="status-timeline mb-4">
+                                <div className="d-flex justify-content-between align-items-center position-relative">
+                                  <div className="progress-line position-absolute" style={{ height: '2px', left: '24px', right: '24px', top: '20px', background: '#e9ecef', zIndex: 0 }}>
+                                    <div style={{ height: '100%', width: `${(statusSteps.filter(s => s.isCompleted).length / (statusSteps.length - 1)) * 100}%`, background: '#D8A35D', transition: 'width 0.3s' }}></div>
+                                  </div>
+                                  {statusSteps.map((step, idx) => (
+                                    <div key={step.key} className="text-center position-relative" style={{ zIndex: 1, flex: 1 }}>
+                                      <div className={`rounded-circle d-inline-flex align-items-center justify-content-center ${step.isActive ? 'bg-primary-bake text-white' : step.isCompleted ? 'bg-success text-white' : 'bg-light text-muted'}`} style={{ width: '40px', height: '40px', border: '3px solid white', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                                        <i className={`bi bi-${step.icon} ${step.isActive || step.isCompleted ? 'fs-6' : 'fs-6'}`}></i>
                                       </div>
-                                    )}
+                                      <div className={`small mt-2 fw-${step.isActive ? 'bold' : 'normal'} ${step.isActive ? 'text-dark' : 'text-muted'}`}>{step.label}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Customer & Delivery Info - Side by Side */}
+                              <div className="row g-3 mb-4">
+                                <div className="col-md-6">
+                                  <div className="info-card p-3 rounded" style={{ background: '#FFF4EA' }}>
+                                    <div className="d-flex align-items-start gap-3">
+                                      <div className="rounded-circle bg-white p-2 shadow-sm">
+                                        <i className="bi bi-person-fill fs-5 text-primary-bake"></i>
+                                      </div>
+                                      <div className="flex-grow-1">
+                                        <small className="text-muted text-uppercase d-block mb-1" style={{ fontSize: '0.7rem', letterSpacing: '0.5px' }}>{t('customerLabel')}</small>
+                                        <strong className="d-block">{order.customer_name}</strong>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="col-md-6">
+                                  <div className="info-card p-3 rounded" style={{ background: '#F8E8D0' }}>
+                                    <div className="d-flex align-items-start gap-3">
+                                      <div className="rounded-circle bg-white p-2 shadow-sm">
+                                        <i className={`bi ${order.delivery_type === 'delivery' ? 'bi-truck' : 'bi-bag'} fs-5 text-primary-bake`}></i>
+                                      </div>
+                                      <div className="flex-grow-1">
+                                        <small className="text-muted text-uppercase d-block mb-1" style={{ fontSize: '0.7rem', letterSpacing: '0.5px' }}>{t('typeLabel')}</small>
+                                        <strong className="d-block text-capitalize">{order.delivery_type === 'delivery' ? t('deliveryLabel') : t('pickupLabel')}</strong>
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            ))}
-                          </div>
-                        </div>
 
-                        {/* Payment Summary */}
-                        <div className="payment-summary p-3 rounded mb-4" style={{background: '#E8F8F2'}}>
-                          <div className="d-flex justify-content-between mb-2">
-                            <span className="text-muted">{t('subtotal')}</span>
-                            <span className="fw-semibold">{formatCurrency(subtotal)}</span>
-                          </div>
-                          {discount > 0 && (
-                            <div className="d-flex justify-content-between mb-2">
-                              <span className="text-muted">{t('discount') || 'Discount'}</span>
-                              <span className="fw-semibold text-success">
-                                {formatCurrency(-discount)}
-                              </span>
+                              {/* Delivery Address (if applicable) */}
+                              {order.delivery_type === 'delivery' && order.address && (
+                                <div className="mb-4 p-3 rounded" style={{ background: '#FCE4EC' }}>
+                                  <div className="d-flex align-items-start gap-3">
+                                    <i className="bi bi-geo-alt-fill text-danger mt-1"></i>
+                                    <div>
+                                      <small className="text-muted text-uppercase d-block mb-1" style={{ fontSize: '0.7rem', letterSpacing: '0.5px' }}>{t('deliveryAddress')}</small>
+                                      <strong>{order.address}</strong>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Items Section */}
+                              <div className="mb-4">
+                                <h6 className="fw-bold mb-3 text-uppercase" style={{ fontSize: '0.85rem', letterSpacing: '0.5px' }}>
+                                  <i className="bi bi-bag-fill me-2 text-primary-bake"></i>{t('orderItems')}
+                                </h6>
+                                <div className="items-list">
+                                  {order.items && order.items.map((item, idx) => (
+                                    <div key={idx} className="py-3 border-bottom">
+                                      <div className="d-flex align-items-start gap-3">
+                                        {/* Product Image */}
+                                        <div className="flex-shrink-0">
+                                          <Image
+                                            src={item.image_url || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=80&h=80&fit=crop'}
+                                            alt={item.product}
+                                            width={56}
+                                            height={56}
+                                            className="rounded"
+                                            style={{ objectFit: 'cover', border: '1px solid #eee' }}
+                                          />
+                                        </div>
+                                        {/* Product Details */}
+                                        <div className="flex-grow-1">
+                                          <div className="d-flex justify-content-between align-items-start">
+                                            <div>
+                                              <div className="fw-semibold">{item.product}</div>
+                                              <small className="text-muted">{formatCurrency(item.price)} × {item.quantity}</small>
+                                            </div>
+                                            <div className="fw-bold">{formatCurrency(item.price * item.quantity)}</div>
+                                          </div>
+                                          {item.note && (
+                                            <div className="mt-2 p-2 rounded" style={{ background: '#FFF9E6', fontSize: '0.85rem' }}>
+                                              <i className="bi bi-chat-left-text me-1 text-warning"></i>
+                                              <span className="text-dark">{item.note}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Payment Summary */}
+                              <div className="payment-summary p-3 rounded mb-4" style={{ background: '#E8F8F2' }}>
+                                <div className="d-flex justify-content-between mb-2">
+                                  <span className="text-muted">{t('subtotal')}</span>
+                                  <span className="fw-semibold">{formatCurrency(subtotal)}</span>
+                                </div>
+                                {discount > 0 && (
+                                  <div className="d-flex justify-content-between mb-2">
+                                    <span className="text-muted">{t('discount') || 'Discount'}</span>
+                                    <span className="fw-semibold text-success">
+                                      {formatCurrency(-discount)}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="d-flex justify-content-between mb-3 pb-3 border-bottom">
+                                  <span className="text-muted">{t('deliveryFee')}</span>
+                                  <span className="fw-semibold">{formatCurrency(deliveryFee)}</span>
+                                </div>
+                                <div className="d-flex justify-content-between align-items-center">
+                                  <span className="fw-bold fs-5">{t('totalAmount')}</span>
+                                  <span className="fw-bold fs-4 text-primary-bake">{formatCurrency(totalAmount)}</span>
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="d-flex gap-2">
+                                {nextAction && (
+                                  <button
+                                    disabled={updating === order.id || cancelling === order.id}
+                                    onClick={() => updateOrderStatus(order.id, nextAction.nextStatus)}
+                                    className={`btn btn-${nextAction.color} btn-lg flex-grow-1 d-flex align-items-center justify-content-center gap-2`}
+                                    style={{ padding: '0.875rem' }}
+                                  >
+                                    {updating === order.id ? (
+                                      <>
+                                        <span className="spinner-border spinner-border-sm" role="status"></span>
+                                        <span>{t('updating')}</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <i className={`bi bi-${nextAction.icon} fs-5`}></i>
+                                        <span className="fw-semibold">{nextAction.label}</span>
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+
+                                {/* Cancel Button - show for non-delivered orders */}
+                                {order.status !== 'delivered' && order.status !== 'cancelled' && (
+                                  <button
+                                    disabled={updating === order.id || cancelling === order.id}
+                                    onClick={() => setCancelModal({ show: true, orderId: order.id })}
+                                    className="btn btn-outline-danger btn-lg d-flex align-items-center justify-content-center gap-2"
+                                    style={{ padding: '0.875rem' }}
+                                    title="Cancel Order"
+                                  >
+                                    {cancelling === order.id ? (
+                                      <span className="spinner-border spinner-border-sm" role="status"></span>
+                                    ) : (
+                                      <i className="bi bi-x-circle fs-5"></i>
+                                    )}
+                                  </button>
+                                )}
+                              </div>
+
+                              {order.status === 'delivered' && (
+                                <div className="alert alert-success mb-0 d-flex align-items-center gap-2">
+                                  <i className="bi bi-check-circle-fill fs-5"></i>
+                                  <span className="fw-semibold">{t('orderCompleted')}</span>
+                                </div>
+                              )}
+
+                              {order.status === 'cancelled' && (
+                                <div className="alert alert-danger mb-0 d-flex align-items-center gap-2">
+                                  <i className="bi bi-x-circle-fill fs-5"></i>
+                                  <span className="fw-semibold">Order Cancelled</span>
+                                </div>
+                              )}
+
                             </div>
-                          )}
-                          <div className="d-flex justify-content-between mb-3 pb-3 border-bottom">
-                            <span className="text-muted">{t('deliveryFee')}</span>
-                            <span className="fw-semibold">{formatCurrency(deliveryFee)}</span>
-                          </div>
-                          <div className="d-flex justify-content-between align-items-center">
-                            <span className="fw-bold fs-5">{t('totalAmount')}</span>
-                            <span className="fw-bold fs-4 text-primary-bake">{formatCurrency(totalAmount)}</span>
                           </div>
                         </div>
-
-                        {/* Action Buttons */}
-                        <div className="d-flex gap-2">
-                          {nextAction && (
-                            <button 
-                              disabled={updating === order.id || cancelling === order.id} 
-                              onClick={() => updateOrderStatus(order.id, nextAction.nextStatus)} 
-                              className={`btn btn-${nextAction.color} btn-lg flex-grow-1 d-flex align-items-center justify-content-center gap-2`}
-                              style={{padding: '0.875rem'}}
-                            >
-                              {updating === order.id ? (
-                                <>
-                                  <span className="spinner-border spinner-border-sm" role="status"></span>
-                                  <span>{t('updating')}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <i className={`bi bi-${nextAction.icon} fs-5`}></i>
-                                  <span className="fw-semibold">{nextAction.label}</span>
-                                </>
-                              )}
-                            </button>
-                          )}
-                          
-                          {/* Cancel Button - show for non-delivered orders */}
-                          {order.status !== 'delivered' && order.status !== 'cancelled' && (
-                            <button 
-                              disabled={updating === order.id || cancelling === order.id} 
-                              onClick={() => setCancelModal({ show: true, orderId: order.id })}
-                              className="btn btn-outline-danger btn-lg d-flex align-items-center justify-content-center gap-2"
-                              style={{padding: '0.875rem'}}
-                              title="Cancel Order"
-                            >
-                              {cancelling === order.id ? (
-                                <span className="spinner-border spinner-border-sm" role="status"></span>
-                              ) : (
-                                <i className="bi bi-x-circle fs-5"></i>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                        
-                        {order.status === 'delivered' && (
-                          <div className="alert alert-success mb-0 d-flex align-items-center gap-2">
-                            <i className="bi bi-check-circle-fill fs-5"></i>
-                            <span className="fw-semibold">{t('orderCompleted')}</span>
-                          </div>
-                        )}
-                        
-                        {order.status === 'cancelled' && (
-                          <div className="alert alert-danger mb-0 d-flex align-items-center gap-2">
-                            <i className="bi bi-x-circle-fill fs-5"></i>
-                            <span className="fw-semibold">Order Cancelled</span>
-                          </div>
-                        )}
-
-                      </div>
-                    </div>
-                  </div>
-                );})}
+                      );
+                    })}
                   </Fragment>
                 ))}
               </div>
@@ -987,7 +988,7 @@ export default function OrdersPage() {
 
       {/* Cancel Order Modal */}
       {cancelModal.show && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{backgroundColor: 'rgba(0,0,0,0.5)'}}>
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog modal-dialog-centered">
             <div className="modal-content">
               <div className="modal-header border-0 pb-0">
@@ -1006,9 +1007,9 @@ export default function OrdersPage() {
                 </p>
                 <div className="mb-3">
                   <label className="form-label fw-semibold">Cancellation Reason (optional)</label>
-                  <textarea 
-                    className="form-control" 
-                    rows="3" 
+                  <textarea
+                    className="form-control"
+                    rows="3"
                     placeholder="e.g., Out of stock, Unable to deliver to this area..."
                     value={cancelReason}
                     onChange={(e) => setCancelReason(e.target.value)}
@@ -1017,9 +1018,9 @@ export default function OrdersPage() {
                 </div>
               </div>
               <div className="modal-footer border-0 pt-0">
-                <button 
-                  type="button" 
-                  className="btn btn-secondary" 
+                <button
+                  type="button"
+                  className="btn btn-secondary"
                   onClick={() => {
                     setCancelModal({ show: false, orderId: null });
                     setCancelReason('');
@@ -1027,9 +1028,9 @@ export default function OrdersPage() {
                 >
                   Keep Order
                 </button>
-                <button 
-                  type="button" 
-                  className="btn btn-danger d-flex align-items-center gap-2" 
+                <button
+                  type="button"
+                  className="btn btn-danger d-flex align-items-center gap-2"
                   disabled={cancelling === cancelModal.orderId}
                   onClick={() => cancelOrder(cancelModal.orderId, cancelReason)}
                 >

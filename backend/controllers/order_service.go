@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -298,6 +299,25 @@ func confirmOrder(userID string) {
 		estimatedTime,
 	)
 	SendMessage(userID, confirmation)
+
+	// Send Payment Link Card
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000" // Default fallback
+	}
+
+	paymentLink := fmt.Sprintf("%s/order/%d", frontendURL, order.ID)
+
+	paymentElement := Element{
+		Title:    fmt.Sprintf("💳 Pay for Order #%d", order.ID),
+		Subtitle: fmt.Sprintf("Total: $%.2f. Tap to pay securely.", order.TotalAmount),
+		ImageURL: "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=300&h=200&fit=crop", // Payment image
+		Buttons: []Button{
+			{Type: "web_url", Title: "Pay Now", URL: paymentLink},
+		},
+	}
+
+	SendGenericTemplate(userID, []Element{paymentElement})
 
 	// Reset state for next order
 	ResetUserState(userID)

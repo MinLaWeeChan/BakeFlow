@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -331,6 +332,26 @@ func createNewOrderAfterChoice(w http.ResponseWriter, userID string, req OrderCh
 			{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
 		}
 		_ = SendOrderCardWithTag(userID, orderID, title, subtitle, productImage, buttons, "POST_PURCHASE_UPDATE")
+
+		// Send Payment Link Card
+		frontendURL := os.Getenv("FRONTEND_URL")
+		if frontendURL == "" {
+			frontendURL = "http://localhost:3000" // Default fallback
+		}
+
+		paymentLink := fmt.Sprintf("%s/order/%d", frontendURL, orderID)
+
+		paymentElement := Element{
+			Title:    fmt.Sprintf("💳 Pay for Order #%d", orderID),
+			Subtitle: fmt.Sprintf("Total: $%.2f. Tap to pay securely.", subtotal),                      // subtotal used in this func, logic matches CreateChatOrder
+			ImageURL: "https://images.unsplash.com/photo-1556742049-0cfed4f7a07d?w=300&h=200&fit=crop", // Payment image
+			Buttons: []Button{
+				{Type: "web_url", Title: "Pay Now", URL: paymentLink},
+			},
+		}
+
+		SendGenericTemplate(userID, []Element{paymentElement})
+
 	}()
 }
 
@@ -684,8 +705,10 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	// Send confirmation message to user via Messenger (async)
 	go func() {
 		defer func() { _ = recover() }()
+		log.Printf("🔔 [Order] Attempting to send notification to '%s' for order #%d", userID, orderID)
+
 		if !isValidMessengerRecipientID(userID) {
-			log.Printf("[Order] Skipping Messenger notification: invalid recipient id '%s'", userID)
+			log.Printf("❌ [Order] Skipping Messenger notification: invalid recipient id '%s'", userID)
 			return
 		}
 
@@ -733,7 +756,14 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		// Buttons for the card - include order ID so Track Order shows this specific order
 		trackPayload := fmt.Sprintf("TRACK_ORDER_%d", orderID)
 		log.Printf("[Order] Creating card with Track payload: %s", trackPayload)
+
+		frontendURL := os.Getenv("FRONTEND_URL")
+		if frontendURL == "" {
+			frontendURL = "http://localhost:3000"
+		}
+
 		buttons := []Button{
+			{Type: "web_url", Title: "Pay Now", URL: fmt.Sprintf("%s/order/%d", frontendURL, orderID)},
 			{Type: "postback", Title: "Track Order", Payload: trackPayload},
 			{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
 		}
@@ -753,10 +783,6 @@ func isValidMessengerRecipientID(value string) bool {
 	if value == "" {
 		return false
 	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
+	// Allow any non-empty ID for now to prevent silent failures during testing
 	return true
 }
