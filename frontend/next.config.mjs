@@ -10,7 +10,7 @@ const nextConfig = {
       { protocol: 'https', hostname: 'localhost' },
     ],
   },
-  
+
   // Serve static HTML files from public folder
   async rewrites() {
     return [
@@ -25,6 +25,30 @@ const nextConfig = {
       {
         source: '/order-details.html',
         destination: '/order-details.html',
+      },
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8080/api/:path*'
+      },
+      {
+        source: '/qr_codes/:path*',
+        destination: 'http://localhost:8080/qr_codes/:path*'
+      },
+      {
+        source: '/uploads/:path*',
+        destination: 'http://localhost:8080/uploads/:path*'
+      },
+      {
+        source: '/webhook',
+        destination: 'http://localhost:8080/webhook'
+      },
+      {
+        source: '/promotions/:path*',
+        destination: 'http://localhost:8080/promotions/:path*'
+      },
+      {
+        source: '/checkout',
+        destination: 'http://localhost:8080/checkout'
       },
       {
         source: '/css/:path*',

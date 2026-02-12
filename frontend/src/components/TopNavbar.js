@@ -93,7 +93,7 @@ export default function TopNavbar({
                 {notifications.length > 0 ? (
                   notifications.map((notif) => (
                     <div
-                      key={notif.id}
+                      key={notif.uniqueKey || notif.id}
                       className={`bf-notif-item ${!notif.read ? 'unread' : ''}`}
                       onClick={() => {
                         if (onNotificationClick) onNotificationClick(notif.id);

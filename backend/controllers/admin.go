@@ -819,6 +819,7 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	validStatuses := map[string]bool{
 		"scheduled": true,
 		"pending":   true,
+		"confirmed": true, // Added confirmed
 		"preparing": true,
 		"ready":     true,
 		"delivered": true,
@@ -843,6 +844,7 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	allowedNext := map[string]string{
 		"scheduled": "preparing",
 		"pending":   "preparing",
+		"confirmed": "preparing", // Verified payment -> preparing
 		"preparing": "ready",
 		"ready":     "delivered",
 		"delivered": "",
