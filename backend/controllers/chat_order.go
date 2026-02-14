@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -171,7 +172,7 @@ func canCreateOrder(userID string, orderType OrderType) (bool, string, []*models
 		return true, "", nil
 
 	case OrderTypeRegular:
-		// Rule: Can add to pending/preparing regular orders, or create new if none
+		// Rule: Users can create unlimited independent regular orders
 		// Skip custom cake orders and scheduled orders — they are independent
 		var modifiableOrders []*models.Order
 		for _, order := range existingOrders {
@@ -186,28 +187,15 @@ func canCreateOrder(userID string, orderType OrderType) (bool, string, []*models
 				modifiableOrders = append(modifiableOrders, order)
 			}
 		}
+
+		// IMPORTANT: Return true (allow new order) but also return modifiable orders
+		// Frontend will show a choice dialog as a SUGGESTION, not a blocker
+		// Users can choose to merge or create independently
 		if len(modifiableOrders) > 0 {
-			return false, "add_to_existing", modifiableOrders
+			return true, "suggest_add_to_existing", modifiableOrders
 		}
 
-		// Block if non-modifiable active regular orders exist
-		hasBlocking := false
-		for _, order := range existingOrders {
-			if isCustomOrder(order.ID) {
-				continue
-			}
-			status := strings.ToLower(strings.TrimSpace(order.Status))
-			if status == "scheduled" {
-				continue // scheduled orders don't block "order now"
-			}
-			if status == "confirmed" || status == "ready" || status == "delivering" {
-				hasBlocking = true
-				break
-			}
-		}
-		if hasBlocking {
-			return false, "Your current order is being prepared. Please wait for it to complete.", nil
-		}
+		// No existing orders - allow creating new
 		return true, "", nil
 	}
 
@@ -830,13 +818,23 @@ func createNewOrderAfterChoice(w http.ResponseWriter, userID string, req OrderCh
 			}
 		}
 
-		title := "New Order Placed"
-		subtitle := fmt.Sprintf("Order #BF-%d • %s • Total: $%.2f", orderID, itemSummary, subtotal)
+		// Combined confirmation card with all options
+		frontendURL := os.Getenv("FRONTEND_URL")
+		if frontendURL == "" {
+			frontendURL = "http://localhost:3000"
+		}
+
+		paymentLink := fmt.Sprintf("%s/order/%d", frontendURL, orderID)
+
+		title := "✅ Order Confirmed"
+		subtitle := fmt.Sprintf("Order #BF-%d • %s • Total: $%.2f\n\nReady to pay? Tap Pay Now below", orderID, itemSummary, subtotal)
 		buttons := []Button{
-			{Type: "postback", Title: "Track Order", Payload: fmt.Sprintf("TRACK_ORDER_%d", orderID)},
-			{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
+			{Type: "web_url", Title: "💳 Pay Now", URL: paymentLink},
+			{Type: "postback", Title: "📍 Track Order", Payload: fmt.Sprintf("TRACK_ORDER_%d", orderID)},
+			{Type: "postback", Title: "❓ Need Help?", Payload: "CONTACT_SUPPORT"},
 		}
 		_ = SendOrderCardWithTag(userID, orderID, title, subtitle, productImage, buttons, "POST_PURCHASE_UPDATE")
+
 	}()
 }
 
@@ -1085,6 +1083,46 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Offer choice dialog as a SUGGESTION (not a blocker) if user has modifiable orders
+		if reason == "suggest_add_to_existing" && len(modifiableOrders) > 0 {
+			type OrderSummary struct {
+				ID      int     `json:"id"`
+				Status  string  `json:"status"`
+				Items   int     `json:"items"`
+				Amount  float64 `json:"amount"`
+				Summary string  `json:"summary"`
+			}
+			var summaries []OrderSummary
+			for _, order := range modifiableOrders {
+				// Count actual items from order_items table
+				actualItems := order.TotalItems
+				var count int
+				if err := configs.DB.QueryRow(`SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = $1`, order.ID).Scan(&count); err == nil && count > 0 {
+					actualItems = count
+				}
+				summaries = append(summaries, OrderSummary{
+					ID:      order.ID,
+					Status:  order.Status,
+					Items:   actualItems,
+					Amount:  order.TotalAmount,
+					Summary: fmt.Sprintf("Order #BF-%d • %d items • $%.2f", order.ID, actualItems, order.TotalAmount),
+				})
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success":    true,
+				"action":     "ask_user_choice",
+				"message":    "You have an existing order. Add to it or create a new one?",
+				"orders":     summaries,
+				"newItems":   req.Items,
+				"order_type": string(orderTypeDetected),
+				"allow_new":  true, // Allow creating new order independently
+			})
+			return
+		}
+
 		// Phone-based duplicate check
 		if req.CustomerPhone != "" {
 			activeStatuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
@@ -1228,8 +1266,10 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	// Send confirmation message to user via Messenger (async)
 	go func() {
 		defer func() { _ = recover() }()
+		log.Printf("🔔 [Order] Attempting to send notification to '%s' for order #%d", userID, orderID)
+
 		if !isValidMessengerRecipientID(userID) {
-			log.Printf("[Order] Skipping Messenger notification: invalid recipient id '%s'", userID)
+			log.Printf("❌ [Order] Skipping Messenger notification: invalid recipient id '%s'", userID)
 			return
 		}
 
@@ -1284,7 +1324,14 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		// Buttons for the card - include order ID so Track Order shows this specific order
 		trackPayload := fmt.Sprintf("TRACK_ORDER_%d", orderID)
 		log.Printf("[Order] Creating card with Track payload: %s", trackPayload)
+
+		frontendURL := os.Getenv("FRONTEND_URL")
+		if frontendURL == "" {
+			frontendURL = "http://localhost:3000"
+		}
+
 		buttons := []Button{
+			{Type: "web_url", Title: "Pay Now", URL: fmt.Sprintf("%s/order/%d", frontendURL, orderID)},
 			{Type: "postback", Title: "Track Order", Payload: trackPayload},
 			{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
 		}
@@ -1304,10 +1351,6 @@ func isValidMessengerRecipientID(value string) bool {
 	if value == "" {
 		return false
 	}
-	for _, r := range value {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
+	// Allow any non-empty ID for now to prevent silent failures during testing
 	return true
 }

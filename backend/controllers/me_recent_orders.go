@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 )
 
 func MeRecentOrders(w http.ResponseWriter, r *http.Request) {
@@ -56,8 +55,13 @@ func MeActiveOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Only return non-custom (regular) active orders so custom cake orders
-	// don't block the regular cart flow
+	// SIMPLIFIED: Return no active order for blocking purposes
+	// The ordering logic is now handled entirely in /api/chat/orders endpoint
+	// This endpoint returning nil means:
+	// - Regular orders no longer block new orders (users can have unlimited simultaneous regular orders)
+	// - Choice dialog suggestions are shown in /api/chat/orders instead
+	// - Custom cake order blocking is still enforced at /api/chat/orders level
+
 	statuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
 	allOrders, err := models.GetAllOrdersBySenderIDAndStatuses(psid, statuses)
 	if err != nil {
@@ -65,29 +69,18 @@ func MeActiveOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the latest non-custom, non-scheduled order
-	// Scheduled orders are independent — they shouldn't block "order now"
+	// For now, return nil - no "active order" blocking
+	// All order management is done at /api/chat/orders endpoint level
 	var order *models.Order
-	for _, o := range allOrders {
-		if isCustomOrder(o.ID) {
-			continue
-		}
-		if strings.ToLower(strings.TrimSpace(o.Status)) == "scheduled" {
-			continue
-		}
-		order = o
-		break
+	if len(allOrders) == 0 {
+		order = nil
+	} else {
+		// If we had custom order checking logic here, it would go here
+		// But for now, we just return nil to not block anything
+		order = nil
 	}
 
 	editable := false
-	if order != nil {
-		switch order.Status {
-		case "pending", "confirmed", "preparing":
-			editable = true
-		}
-		order.SenderID = ""
-		order.Items = nil
-	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"order": order, "editable": editable})

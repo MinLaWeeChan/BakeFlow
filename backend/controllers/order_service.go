@@ -3,6 +3,8 @@ package controllers
 import (
 	"fmt"
 	"log"
+
+	// "os"
 	"strconv"
 	"strings"
 	"time"
@@ -69,7 +71,7 @@ func checkOrderRateLimit(senderID string) (bool, time.Duration, error) {
 
 	now := time.Now()
 	shortWindow := 10 * time.Minute
-	shortLimit := 3
+	shortLimit := 100 // Increased from 3 to effectively disable rate limiting
 	shortCount := 0
 	var oldestShort time.Time
 
@@ -118,191 +120,7 @@ func getNextOpeningTime() string {
 }
 
 // confirmOrder saves the order to the database and sends confirmation
-func confirmOrder(userID string) {
-	state := GetUserState(userID)
-	blocked, err := models.IsIdentityBlocked("psid", userID)
-	if err != nil {
-		log.Printf("❌ Failed to check blocked status for %s: %v", userID, err)
-		SendMessage(userID, "Sorry, something went wrong. Please try again later.")
-		ResetUserState(userID)
-		return
-	}
-	if blocked {
-		SendMessage(userID, "Thanks for reaching out. This account is currently restricted from placing new orders. Please contact the bakery if you believe this is a mistake.")
-		ResetUserState(userID)
-		return
-	}
-
-	activeStatuses := []string{"pending", "confirmed", "preparing", "ready", "delivering", "scheduled"}
-	existingOrder, _ := models.GetLatestOrderBySenderIDAndStatuses(userID, activeStatuses)
-	if existingOrder != nil {
-		var addedItems int
-		var addedSubtotal float64
-		for _, item := range state.Cart {
-			addedItems += item.Quantity
-			price := 0.00
-			if product, exists := ProductCatalog[item.Product]; exists {
-				priceStr := strings.ReplaceAll(product.Price, "$", "")
-				if parsedPrice, err := strconv.ParseFloat(priceStr, 64); err == nil {
-					price = parsedPrice
-					addedSubtotal += parsedPrice * float64(item.Quantity)
-				}
-			}
-			_, _ = configs.DB.Exec(`
-				INSERT INTO order_items (order_id, product, quantity, price, created_at)
-				VALUES ($1, $2, $3, $4, NOW())
-			`, existingOrder.ID, item.Product, item.Quantity, price)
-		}
-		// Recalculate order totals from actual items
-		_, _ = configs.DB.Exec(`
-			UPDATE orders
-			SET total_items = (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = $1),
-			    subtotal = (SELECT COALESCE(SUM(price * quantity), 0) FROM order_items WHERE order_id = $1),
-			    total_amount = (SELECT COALESCE(SUM(price * quantity), 0) FROM order_items WHERE order_id = $1) - COALESCE(discount, 0) + COALESCE(delivery_fee, 0)
-			WHERE id = $1
-		`, existingOrder.ID)
-
-		itemSummary := fmt.Sprintf("%d item(s) added", addedItems)
-		title := "Items Added"
-		subtitle := fmt.Sprintf("Order #BF-%d • %s • New total: $%.2f", existingOrder.ID, itemSummary, existingOrder.TotalAmount+addedSubtotal)
-		buttons := []Button{
-			{Type: "postback", Title: "Track Order", Payload: fmt.Sprintf("TRACK_ORDER_%d", existingOrder.ID)},
-			{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
-		}
-		_ = SendOrderCardWithTag(userID, existingOrder.ID, title, subtitle, "", buttons, "POST_PURCHASE_UPDATE")
-
-		SendMessage(userID, "✅ Added to your existing order. We'll keep you updated!")
-		ResetUserState(userID)
-		return
-	}
-
-	limited, retryAfter, err := checkOrderRateLimit(userID)
-	if err != nil {
-		log.Printf("❌ Failed to check rate limit for %s: %v", userID, err)
-		SendMessage(userID, "Sorry, something went wrong. Please try again later.")
-		ResetUserState(userID)
-		return
-	}
-	if limited {
-		retryMinutes := int(retryAfter.Minutes())
-		if retryMinutes < 1 {
-			retryMinutes = 1
-		}
-		SendMessage(userID, fmt.Sprintf("You've placed several orders recently. Please wait %d minutes before ordering again.", retryMinutes))
-		ResetUserState(userID)
-		return
-	}
-
-	// Calculate total items
-	totalItems := 0
-	for _, item := range state.Cart {
-		totalItems += item.Quantity
-	}
-
-	// Calculate totals (subtotal, delivery fee, total amount)
-	subtotal, deliveryFee, totalAmount := calculateOrderTotals(state.Cart, state.DeliveryType, state.Address)
-
-	// Create order in database (include Messenger sender ID for notifications)
-	order := models.Order{
-		CustomerName: state.CustomerName,
-		DeliveryType: state.DeliveryType,
-		Address:      state.Address,
-		Status:       "pending",
-		TotalItems:   totalItems,
-		Subtotal:     subtotal,
-		DeliveryFee:  deliveryFee,
-		TotalAmount:  totalAmount,
-		SenderID:     userID,
-	}
-
-	// Convert cart items to order items
-	var orderItems []models.OrderItem
-	for _, item := range state.Cart {
-		// Get price from ProductCatalog
-		price := 0.00
-		if product, exists := ProductCatalog[item.Product]; exists {
-			// Parse price string (e.g., "$25.00" → 25.00)
-			priceStr := strings.ReplaceAll(product.Price, "$", "")
-			if parsedPrice, err := strconv.ParseFloat(priceStr, 64); err == nil {
-				price = parsedPrice
-			}
-		}
-
-		orderItems = append(orderItems, models.OrderItem{
-			Product:  item.Product,
-			Quantity: item.Quantity,
-			Price:    price,
-		})
-	}
-
-	err = models.CreateOrder(&order, orderItems)
-	if err != nil {
-		log.Printf("❌ Error creating order: %v", err)
-		SendMessage(userID, "😞 Sorry, there was an error placing your order. Please try again later.")
-		ResetUserState(userID)
-		return
-	}
-
-	deliveryIcon := "🏠"
-	estimatedTime := "Ready in 15-20 minutes"
-	if state.DeliveryType == "delivery" {
-		deliveryIcon = "🚚"
-		estimatedTime = "Delivered in 30-45 minutes"
-	}
-
-	// Build cart display with prices for confirmation
-	cartDisplay := ""
-	for _, item := range state.Cart {
-		itemPrice := 0.00
-		if product, exists := ProductCatalog[item.Product]; exists {
-			priceStr := strings.ReplaceAll(product.Price, "$", "")
-			if price, err := strconv.ParseFloat(priceStr, 64); err == nil {
-				itemPrice = price * float64(item.Quantity)
-			}
-		}
-		cartDisplay += fmt.Sprintf("• %d× %s %s - $%.2f\n", item.Quantity, item.ProductEmoji, item.Product, itemPrice)
-	}
-
-	// Build pricing breakdown
-	pricingBreakdown := fmt.Sprintf(
-		"\n💰 **Pricing:**\n"+
-			"Subtotal: $%.2f\n"+
-			"Delivery Fee: $%.2f\n"+
-			"━━━━━━━━━━━━\n"+
-			"**Total: $%.2f**",
-		order.Subtotal,
-		order.DeliveryFee,
-		order.TotalAmount,
-	)
-
-	// Send rich confirmation
-	confirmation := fmt.Sprintf(
-		"✅ **Order Confirmed!**\n\n"+
-			"Order #%d\n\n"+
-			"🛒 **Your Order:**\n"+
-			"%s"+
-			"%s\n\n"+
-			"👤 %s\n"+
-			"%s %s\n"+
-			"📍 %s\n"+
-			"📊 Status: %s\n\n"+
-			"⏱ %s\n\n"+
-			"Thank you for choosing BakeFlow! 🎉\n\n"+
-			"Type 'menu' to order more, or 'orders' to view history.",
-		order.ID,
-		cartDisplay,
-		pricingBreakdown,
-		state.CustomerName,
-		deliveryIcon, strings.Title(state.DeliveryType),
-		order.Address,
-		strings.Title(order.Status),
-		estimatedTime,
-	)
-	SendMessage(userID, confirmation)
-
-	// Reset state for next order
-	ResetUserState(userID)
-}
+// confirmOrder has been removed - use webview-based ordering via CreateChatOrder instead
 
 // handleReorder pre-fills cart with items from previous order
 func handleReorder(userID string, orderID int) {
@@ -341,12 +159,8 @@ func handleReorder(userID string, orderID int) {
 	// Send confirmation message
 	SendMessage(userID, fmt.Sprintf("🔄 **Reordering from Order #%d**\n\n✅ Added %d items to your cart!", order.ID, totalItems))
 
-	// Show cart
-	showCart(userID)
-
-	// Ask for checkout
-	time.Sleep(1 * time.Second)
-	askName(userID)
+	// Open webview form to complete reorder
+	ShowWebviewOrderForm(userID)
 }
 
 // askForRating sends rating request with star buttons

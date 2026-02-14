@@ -7,7 +7,7 @@ import { useTranslation } from '../utils/i18n';
 // Sidebar with collapse + bootstrap tooltips
 export default function Sidebar({ open, toggle }) {
   const router = useRouter();
-  
+
   useEffect(() => {
     // Init Bootstrap tooltips dynamically (guard for SSR)
     if (typeof window !== 'undefined' && window.bootstrap) {
@@ -23,6 +23,7 @@ export default function Sidebar({ open, toggle }) {
   const navItems = [
     { href: '/admin', icon: 'speedometer2', key: 'dashboard' },
     { href: '/admin/orders', icon: 'receipt', key: 'orders' },
+    { href: '/admin/payments', icon: 'cash-coin', key: 'payments' },
     { href: '/admin/products', icon: 'box-seam', key: 'products' },
     { href: '/admin/promotions', icon: 'tag', key: 'promotions' },
     { href: '/admin/customers', icon: 'people', key: 'customers' },
@@ -30,7 +31,7 @@ export default function Sidebar({ open, toggle }) {
     { href: '/admin/settings', icon: 'gear', key: 'settings' }
   ];
 
-  
+
 
   return (
     <aside className={`bf-sidebar bg-white border-end ${open ? 'expanded' : 'collapsed'}`}>
@@ -71,21 +72,21 @@ export default function Sidebar({ open, toggle }) {
               {open ? (
                 <>
                   <button className={`btn btn-sm d-flex align-items-center ${lang === 'en' ? 'btn-primary text-white' : 'btn-outline-secondary'}`} onClick={() => setLang('en')} aria-label={t('english')}>
-                    <span style={{fontSize: '18px', lineHeight: 1}}>🇬🇧</span>
+                    <span style={{ fontSize: '18px', lineHeight: 1 }}>🇬🇧</span>
                     <span className="ms-2 d-none d-md-inline">{t('english')}</span>
                   </button>
                   <button className={`btn btn-sm d-flex align-items-center ${lang === 'my' ? 'btn-primary text-white' : 'btn-outline-secondary'}`} onClick={() => setLang('my')} aria-label={t('myanmar')}>
-                    <span style={{fontSize: '18px', lineHeight: 1}}>🇲🇲</span>
+                    <span style={{ fontSize: '18px', lineHeight: 1 }}>🇲🇲</span>
                     <span className="ms-2 d-none d-md-inline">{t('myanmar')}</span>
                   </button>
                 </>
               ) : (
                 <>
                   <button className={`btn btn-sm btn-link p-0 ${lang === 'en' ? 'text-primary' : 'text-secondary'}`} title={t('english')} onClick={() => setLang('en')} aria-label={t('english')}>
-                    <span style={{fontSize: '18px'}}>🇬🇧</span>
+                    <span style={{ fontSize: '18px' }}>🇬🇧</span>
                   </button>
                   <button className={`btn btn-sm btn-link p-0 ${lang === 'my' ? 'text-primary' : 'text-secondary'}`} title={t('myanmar')} onClick={() => setLang('my')} aria-label={t('myanmar')}>
-                    <span style={{fontSize: '18px'}}>🇲🇲</span>
+                    <span style={{ fontSize: '18px' }}>🇲🇲</span>
                   </button>
                 </>
               )}

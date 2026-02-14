@@ -2,6 +2,15 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 
 const NotificationContext = createContext();
 
+// Helper to ensure notification has uniqueKey
+function ensureUniqueKey(notif, index) {
+  if (notif.uniqueKey) return notif;
+  return {
+    ...notif,
+    uniqueKey: `${notif.id}-${notif.timestamp || Date.now()}-${index}`
+  };
+}
+
 export function NotificationProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [storageReady, setStorageReady] = useState(false);
@@ -12,7 +21,11 @@ export function NotificationProvider({ children }) {
       const stored = localStorage.getItem('bakeflow_notifications');
       if (!stored) return;
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) setNotifications(parsed);
+      if (Array.isArray(parsed)) {
+        // Ensure all notifications have uniqueKey
+        const withKeys = parsed.map((n, idx) => ensureUniqueKey(n, idx));
+        setNotifications(withKeys);
+      }
     } catch (e) {
       try {
         localStorage.removeItem('bakeflow_notifications');
@@ -38,17 +51,34 @@ export function NotificationProvider({ children }) {
     if (!newOnes || newOnes.length === 0) return;
     console.log('🔔 Adding notifications:', newOnes);
     
+    // Generate unique key that persists across re-renders
+    const uniqueKey = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     // Mark new notifications as unread and add timestamp
     const timestampedNotifications = newOnes.map(n => ({
       ...n,
       read: false,
       timestamp: n.timestamp || Date.now(),
       isRead: false,
-      type: 'new_order'
+      type: 'new_order',
+      // Keep the original ID for reference
+      orderId: n.id,
+      // Add a stable unique key for React rendering
+      uniqueKey: `${n.id}-${uniqueKey}`
     }));
     
-    // Keep only last 20 notifications to prevent clutter
-    setNotifications(prev => [...timestampedNotifications, ...prev].slice(0, 20));
+    // Keep only last 20 notifications and deduplicate by order ID to prevent clutter
+    setNotifications(prev => {
+      const combined = [...timestampedNotifications, ...prev];
+      // Deduplicate by uniqueKey to avoid exact duplicates
+      const seen = new Set();
+      const deduped = combined.filter(notif => {
+        if (seen.has(notif.uniqueKey)) return false;
+        seen.add(notif.uniqueKey);
+        return true;
+      });
+      return deduped.slice(0, 20);
+    });
     setNewOrderToast({ show: true, items: timestampedNotifications });
   }, []);
 

@@ -37,72 +37,16 @@ func showHelp(userID string) {
 
 	SendMessage(userID, help)
 
-	// After showing help, start the ordering flow
-	startOrderingFlow(userID)
+	// After showing help, open webview order form
+	ShowWebviewOrderForm(userID)
 }
 
 // showOrderHistory displays recent orders (mock implementation)
 // goBack handles the "Go Back" navigation
 func goBack(userID string) {
-	state := GetUserState(userID)
-
-	switch state.State {
-	case "awaiting_quantity":
-		// Go back to product selection
-		showProducts(userID)
-
-	case "awaiting_cart_decision":
-		// Go back to cart
-		showCart(userID)
-
-	case "awaiting_name":
-		// Go back to cart decision
-		askAddMore(userID)
-
-	case "awaiting_delivery_type":
-		// Go back to name input
-		state.State = "awaiting_name"
-		quickReplies := []QuickReply{
-			{ContentType: "text", Title: "⬅️ Back to Cart", Payload: "GO_BACK"},
-			{ContentType: "text", Title: "❌ Cancel", Payload: "CANCEL_ORDER"},
-		}
-		SendQuickReplies(userID, "What's your name?", quickReplies)
-
-	case "awaiting_address":
-		// Go back to pickup/delivery selection
-		state.State = "awaiting_delivery_type"
-		quickReplies := []QuickReply{
-			{ContentType: "text", Title: "🏠 Pickup", Payload: "PICKUP"},
-			{ContentType: "text", Title: "🚚 Delivery", Payload: "DELIVERY"},
-			{ContentType: "text", Title: "⬅️ Back", Payload: "GO_BACK"},
-			{ContentType: "text", Title: "❌ Cancel", Payload: "CANCEL_ORDER"},
-		}
-		SendQuickReplies(userID, fmt.Sprintf("Thanks %s! Would you like pickup or delivery?", state.CustomerName), quickReplies)
-
-	case "confirming":
-		// Go back to address or delivery type
-		if state.DeliveryType == "delivery" {
-			state.State = "awaiting_address"
-			quickReplies := []QuickReply{
-				{ContentType: "text", Title: "⬅️ Back", Payload: "GO_BACK"},
-				{ContentType: "text", Title: "❌ Cancel", Payload: "CANCEL_ORDER"},
-			}
-			SendQuickReplies(userID, "Please type your delivery address:\n(Street, City, ZIP)", quickReplies)
-		} else {
-			state.State = "awaiting_delivery_type"
-			quickReplies := []QuickReply{
-				{ContentType: "text", Title: "🏠 Pickup", Payload: "PICKUP"},
-				{ContentType: "text", Title: "🚚 Delivery", Payload: "DELIVERY"},
-				{ContentType: "text", Title: "⬅️ Back", Payload: "GO_BACK"},
-				{ContentType: "text", Title: "❌ Cancel", Payload: "CANCEL_ORDER"},
-			}
-			SendQuickReplies(userID, fmt.Sprintf("Thanks %s! Would you like pickup or delivery?", state.CustomerName), quickReplies)
-		}
-
-	default:
-		// If no clear back action, go to main menu
-		startOrderingFlow(userID)
-	}
+	// Chat-based ordering has been removed
+	// All navigation now goes through webview form
+	ShowWebviewOrderForm(userID)
 }
 
 // ========== NEW FEATURES ==========
@@ -353,30 +297,6 @@ func showOrderTracking(userID string, orderID int) {
 	}
 
 	SendMessage(userID, msg)
-
-	var buttons []Button
-	switch statusKey {
-	case "delivered":
-		buttons = []Button{
-			{Type: "postback", Title: "⭐ Rate Order", Payload: fmt.Sprintf("RATE_ORDER_%d", order.ID)},
-			{Type: "postback", Title: "🔄 Order Again", Payload: "ORDER_NOW"},
-		}
-	case "cancelled":
-		buttons = []Button{
-			{Type: "postback", Title: "🛒 New Order", Payload: "ORDER_NOW"},
-		}
-	default:
-		buttons = []Button{
-			{Type: "postback", Title: "📋 View Menu", Payload: "MENU_ORDER"},
-			{Type: "postback", Title: "❓ Need Help?", Payload: "CONTACT_SUPPORT"},
-		}
-	}
-
-	SendGenericTemplate(userID, []Element{{
-		Title:    fmt.Sprintf("%s Order #BF-%d", info.emoji, order.ID),
-		Subtitle: fmt.Sprintf("Status: %s\n%s", strings.Title(statusKey), info.message),
-		Buttons:  buttons,
-	}})
 }
 
 // Rating handling moved to `order_service.go`.

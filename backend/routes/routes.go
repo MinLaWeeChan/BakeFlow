@@ -198,6 +198,21 @@ func SetupRoutes() http.Handler {
 	router.HandleFunc("/api/admin/promotions/{id:[0-9]+}/toggle", controllers.AdminTogglePromotion).Methods("PATCH", "OPTIONS")
 	router.HandleFunc("/api/admin/promotions/{id:[0-9]+}", controllers.AdminDeletePromotion).Methods("DELETE", "OPTIONS")
 
+	// Payment API
+	router.HandleFunc("/api/payments/initiate", controllers.InitiatePaymentHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/payments/upload-image", controllers.UploadPaymentImageHandler).Methods("POST", "OPTIONS")
+	router.HandleFunc("/api/payments/status", controllers.GetPaymentStatusHandler).Methods("GET", "OPTIONS")
+
+	// Admin Payment API
+	router.HandleFunc("/api/admin/payments", controllers.AdminGetPayments).Methods("GET", "OPTIONS")
+	router.HandleFunc("/api/admin/payments/{id:[0-9]+}/verify", controllers.AdminVerifyPayment).Methods("POST", "OPTIONS")
+
+	// QR Code endpoint
+	router.HandleFunc("/qr_codes/order_{id:[0-9]+}.png", controllers.GetQRCodeHandler).Methods("GET")
+
+	// Uploads directory for payment images
+	router.PathPrefix("/uploads/").Handler(http.StripPrefix("/uploads/", http.FileServer(http.Dir("../frontend/public/uploads"))))
+
 	// Wrap with middleware
 	handler := LoggingMiddleware(router)
 	handler = CORSMiddleware(handler)
