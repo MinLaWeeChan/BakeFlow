@@ -1023,6 +1023,32 @@ export default function OrdersPage() {
                 </p>
                 <div className="mb-3">
                   <label className="form-label fw-semibold">Cancellation Reason (optional)</label>
+                  
+                  {/* Quick Reason Options */}
+                  <div className="mb-3 d-flex flex-wrap gap-2">
+                    {[
+                      'Out of stock',
+                      'Unable to deliver to this area',
+                      'Customer request',
+                      'Scheduling conflict',
+                      'Quality issue',
+                      'Payment failed'
+                    ].map((reason) => (
+                      <button
+                        key={reason}
+                        type="button"
+                        className={`btn btn-sm ${
+                          cancelReason === reason
+                            ? 'btn-primary'
+                            : 'btn-outline-primary'
+                        }`}
+                        onClick={() => setCancelReason(reason)}
+                      >
+                        {reason}
+                      </button>
+                    ))}
+                  </div>
+
                   <textarea
                     className="form-control"
                     rows="3"

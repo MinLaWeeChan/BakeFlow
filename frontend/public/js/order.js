@@ -59,7 +59,7 @@ function getResolvedUserId() {
     let storedUserId = '';
     try {
         storedUserId = localStorage.getItem('bf_psid') || localStorage.getItem('bf_user_id') || '';
-    } catch (e) {}
+    } catch (e) { }
     const resolvedUserId = (storedUserId && storedUserId !== 'guest')
         ? storedUserId
         : ((urlUserId && urlUserId !== 'guest')
@@ -193,15 +193,13 @@ async function validateCartStock() {
     }
 }
 
+
 async function submitOrder() {
-    console.log('🔍 Submit order clicked');
-    
     // Prevent double submission
     if (isSubmitting) {
-        console.log('⚠️ Order already submitting, ignoring click');
         return;
     }
-    
+
     const name = document.getElementById('customerName').value.trim();
     const phoneRaw = document.getElementById('customerPhone').value.trim();
     const address = document.getElementById('customerAddress').value.trim();
@@ -332,7 +330,7 @@ async function submitOrder() {
     let storedUserId = '';
     try {
         storedUserId = localStorage.getItem('bf_psid') || localStorage.getItem('bf_user_id') || '';
-    } catch (e) {}
+    } catch (e) { }
     const resolvedUserId = (storedUserId && storedUserId !== 'guest')
         ? storedUserId
         : ((urlUserId && urlUserId !== 'guest')
@@ -418,11 +416,11 @@ function processOrderSubmission(name, phone, address, notes, deliveryType, userI
         .filter(item => item.note && item.note.trim())
         .map(item => `${item.name}: ${item.note}`)
         .join(' | ');
-    
+
     // Combine global notes with item-specific notes
     let combinedNotes = notes;
     if (itemNotesText) {
-        combinedNotes = combinedNotes 
+        combinedNotes = combinedNotes
             ? `${notes}\n\n📝 Item notes: ${itemNotesText}`
             : `📝 Item notes: ${itemNotesText}`;
     }
@@ -457,136 +455,136 @@ function processOrderSubmission(name, phone, address, notes, deliveryType, userI
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(orderData)
     })
-    .then(async res => {
-        const text = await res.text();
-        let data = null;
-        try {
-            data = JSON.parse(text);
-        } catch (e) {
-            data = { success: false, message: text };
-        }
-        return { res, data };
-    })
-    .then(({ res, data }) => {
-        console.log('📥 Response data:', JSON.stringify(data, null, 2));
-        console.log('📥 data.action:', data?.action);
-        
-        // Check for order choice request FIRST (before success check)
-        if (data && data.action === 'ask_user_choice') {
-            console.log('✅ Showing choice dialog!');
-            showOrderChoiceDialog(data, orderData, name, phone);
-            resetSubmitButton();
-            return;
-        }
-        
-        if (res.ok && data && data.success) {
+        .then(async res => {
+            const text = await res.text();
+            let data = null;
             try {
-                const userKey = `recent_orders_${getUserId()}`;
-                const existing = JSON.parse(localStorage.getItem(userKey) || '[]');
+                data = JSON.parse(text);
+            } catch (e) {
+                data = { success: false, message: text };
+            }
+            return { res, data };
+        })
+        .then(({ res, data }) => {
+            console.log('📥 Response data:', JSON.stringify(data, null, 2));
+            console.log('📥 data.action:', data?.action);
 
-                const itemsWithImages = (orderData.items || []).map(it => {
-                    const prod = window.products.find(p => p.id == it.product_id);
-                    return {
-                        id: it.product_id,
-                        qty: it.qty,
-                        name: it.name,
-                        price: it.price,
-                        image: prod ? prod.image_url : ''
+            // Check for order choice request FIRST (before success check)
+            if (data && data.action === 'ask_user_choice') {
+                console.log('✅ Showing choice dialog!');
+                showOrderChoiceDialog(data, orderData, name, phone);
+                resetSubmitButton();
+                return;
+            }
+
+            if (res.ok && data && data.success) {
+                try {
+                    const userKey = `recent_orders_${getUserId()}`;
+                    const existing = JSON.parse(localStorage.getItem(userKey) || '[]');
+
+                    const itemsWithImages = (orderData.items || []).map(it => {
+                        const prod = window.products.find(p => p.id == it.product_id);
+                        return {
+                            id: it.product_id,
+                            qty: it.qty,
+                            name: it.name,
+                            price: it.price,
+                            image: prod ? prod.image_url : ''
+                        };
+                    });
+
+                    const entry = {
+                        order_id: data.order_id,
+                        timestamp: Date.now(),
+                        items: itemsWithImages
                     };
-                });
 
-                const entry = {
-                    order_id: data.order_id,
-                    timestamp: Date.now(),
-                    items: itemsWithImages
-                };
+                    const next = Array.isArray(existing) ? existing : [];
+                    next.unshift(entry);
+                    localStorage.setItem(userKey, JSON.stringify(next.slice(0, 10)));
 
-                const next = Array.isArray(existing) ? existing : [];
-                next.unshift(entry);
-                localStorage.setItem(userKey, JSON.stringify(next.slice(0, 10)));
+                    if (window.renderRecentOrders) window.renderRecentOrders();
+                } catch (e) {
+                    console.log('Failed to persist recent order', e);
+                }
 
-                if (window.renderRecentOrders) window.renderRecentOrders();
-            } catch (e) {
-                console.log('Failed to persist recent order', e);
-            }
+                // Show order type specific toast
+                const typeLabel = data.type_label || '';
+                const toastMsg = typeLabel
+                    ? `Order #${data.order_id} placed! ${typeLabel}`
+                    : `Order #${data.order_id} placed!`;
+                showToast(toastMsg, 'success');
 
-            // Show order type specific toast
-            const typeLabel = data.type_label || '';
-            const toastMsg = typeLabel 
-                ? `Order #${data.order_id} placed! ${typeLabel}`
-                : `Order #${data.order_id} placed!`;
-            showToast(toastMsg, 'success');
+                try {
+                    const invoiceKey = `bf_invoice_${data.order_id}`;
+                    const promotions = Array.isArray(window.currentCheckout?.appliedPromotions)
+                        ? window.currentCheckout.appliedPromotions.map(p => ({
+                            label: p.label || p.name || p.code || 'Promotion',
+                            amount: p.amount ?? p.discount ?? p.value ?? null
+                        }))
+                        : (window.currentCheckout?.appliedPromotion ? [{ label: window.currentCheckout.appliedPromotion, amount: window.currentCheckout.discount ?? null }] : []);
+                    const invoiceData = {
+                        order_id: data.order_id,
+                        created_at: new Date().toISOString(),
+                        customer_name: name,
+                        customer_phone: phone,
+                        address: deliveryType === 'delivery' ? address : 'Pickup at store',
+                        notes: combinedNotes,
+                        delivery_type: deliveryType === 'pickup' ? 'Pick Up' : 'Delivery',
+                        payment_status: 'Pay on delivery',
+                        subtotal: window.currentCheckout?.subtotal ?? data.subtotal ?? null,
+                        discount: window.currentCheckout?.discount ?? data.discount ?? null,
+                        delivery_fee: window.currentCheckout?.delivery_fee ?? data.delivery_fee ?? null,
+                        total: window.currentCheckout?.total ?? data.total ?? data.total_amount ?? null,
+                        promotions,
+                        items: (orderData.items || []).map(it => ({
+                            name: it.name,
+                            qty: it.qty,
+                            price: it.price,
+                            line_total: Number(it.price) * Number(it.qty)
+                        }))
+                    };
+                    localStorage.setItem(invoiceKey, JSON.stringify(invoiceData));
+                } catch (e) {
+                    console.log('Failed to store invoice', e);
+                }
 
-            try {
-                const invoiceKey = `bf_invoice_${data.order_id}`;
-                const promotions = Array.isArray(window.currentCheckout?.appliedPromotions)
-                    ? window.currentCheckout.appliedPromotions.map(p => ({
-                        label: p.label || p.name || p.code || 'Promotion',
-                        amount: p.amount ?? p.discount ?? p.value ?? null
-                    }))
-                    : (window.currentCheckout?.appliedPromotion ? [{ label: window.currentCheckout.appliedPromotion, amount: window.currentCheckout.discount ?? null }] : []);
-                const invoiceData = {
-                    order_id: data.order_id,
-                    created_at: new Date().toISOString(),
-                    customer_name: name,
-                    customer_phone: phone,
-                    address: deliveryType === 'delivery' ? address : 'Pickup at store',
-                    notes: combinedNotes,
-                    delivery_type: deliveryType === 'pickup' ? 'Pick Up' : 'Delivery',
-                    payment_status: 'Pay on delivery',
-                    subtotal: window.currentCheckout?.subtotal ?? data.subtotal ?? null,
-                    discount: window.currentCheckout?.discount ?? data.discount ?? null,
-                    delivery_fee: window.currentCheckout?.delivery_fee ?? data.delivery_fee ?? null,
-                    total: window.currentCheckout?.total ?? data.total ?? data.total_amount ?? null,
-                    promotions,
-                    items: (orderData.items || []).map(it => ({
-                        name: it.name,
-                        qty: it.qty,
-                        price: it.price,
-                        line_total: Number(it.price) * Number(it.qty)
-                    }))
-                };
-                localStorage.setItem(invoiceKey, JSON.stringify(invoiceData));
-            } catch (e) {
-                console.log('Failed to store invoice', e);
-            }
+                const params = new URLSearchParams();
+                if (data.order_id != null) params.set('order_id', data.order_id);
+                if (userId) params.set('user_id', userId);
+                params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
+                if (name) params.set('customer_name', name);
+                if (phone) params.set('customer_phone', phone);
+                if (address) params.set('address', deliveryType === 'delivery' ? address : 'Pickup at store');
+                if (combinedNotes) params.set('notes', combinedNotes);
 
-            const params = new URLSearchParams();
-            if (data.order_id != null) params.set('order_id', data.order_id);
-            if (userId) params.set('user_id', userId);
-            params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
-            if (name) params.set('customer_name', name);
-            if (phone) params.set('customer_phone', phone);
-            if (address) params.set('address', deliveryType === 'delivery' ? address : 'Pickup at store');
-            if (combinedNotes) params.set('notes', combinedNotes);
+                if (window.currentCheckout) {
+                    if (window.currentCheckout.subtotal != null) params.set('subtotal', window.currentCheckout.subtotal);
+                    if (window.currentCheckout.discount != null) params.set('discount', window.currentCheckout.discount);
+                    if (window.currentCheckout.delivery_fee != null) params.set('delivery_fee', window.currentCheckout.delivery_fee);
+                    if (window.currentCheckout.total != null) params.set('total', window.currentCheckout.total);
+                }
+                if (data.total != null) params.set('total', data.total);
+                if (data.total_amount != null) params.set('total_amount', data.total_amount);
 
-            if (window.currentCheckout) {
-                if (window.currentCheckout.subtotal != null) params.set('subtotal', window.currentCheckout.subtotal);
-                if (window.currentCheckout.discount != null) params.set('discount', window.currentCheckout.discount);
-                if (window.currentCheckout.delivery_fee != null) params.set('delivery_fee', window.currentCheckout.delivery_fee);
-                if (window.currentCheckout.total != null) params.set('total', window.currentCheckout.total);
-            }
-            if (data.total != null) params.set('total', data.total);
-            if (data.total_amount != null) params.set('total_amount', data.total_amount);
-
-            window.location.href = `/order-details.html?${params.toString()}`;
-        } else {
-            // Handle specific errors (like insufficient stock)
-            if (data && data.error === 'insufficient_stock') {
-                showError(`Sorry, only ${data.available} ${data.product} available. Please reduce quantity.`);
-            } else if (data && data.error === 'product_unavailable') {
-                showError(data.message || 'Product is no longer available');
+                window.location.href = `/order-details.html?${params.toString()}`;
             } else {
-                showError('Order failed: ' + (data && data.message ? data.message : 'Unknown error'));
+                // Handle specific errors (like insufficient stock)
+                if (data && data.error === 'insufficient_stock') {
+                    showError(`Sorry, only ${data.available} ${data.product} available. Please reduce quantity.`);
+                } else if (data && data.error === 'product_unavailable') {
+                    showError(data.message || 'Product is no longer available');
+                } else {
+                    showError('Order failed: ' + (data && data.message ? data.message : 'Unknown error'));
+                }
+                resetSubmitButton();
             }
+        })
+        .catch(err => {
+            console.error('❌ Error:', err);
+            showError('Network error. Please try again.');
             resetSubmitButton();
-        }
-    })
-    .catch(err => {
-        console.error('❌ Error:', err);
-        showError('Network error. Please try again.');
-        resetSubmitButton();
-    });
+        });
 }
 
 function resetSubmitButton() {
@@ -619,7 +617,7 @@ function resolveUserAndToken() {
     let storedUserId = '';
     try {
         storedUserId = localStorage.getItem('bf_psid') || localStorage.getItem('bf_user_id') || '';
-    } catch (e) {}
+    } catch (e) { }
     const resolvedUserId = (storedUserId && storedUserId !== 'guest')
         ? storedUserId
         : ((urlUserId && urlUserId !== 'guest')
@@ -816,7 +814,7 @@ async function submitPreorder(preorder) {
             try {
                 window.setPendingSchedule && window.setPendingSchedule(null);
                 localStorage.removeItem(`pending_schedule_${getUserId()}`);
-            } catch (e) {}
+            } catch (e) { }
             if (typeof closeSheets === 'function') closeSheets();
             window.pendingPreorderDraft = null;
 
@@ -1048,11 +1046,11 @@ async function submitPreorderDirect(opts) {
             };
             try {
                 localStorage.setItem(`bf_invoice_${data.order_id}`, JSON.stringify(invoiceData));
-            } catch (e) {}
+            } catch (e) { }
             // Also store under a known key so the receipt page can always find it
             try {
                 localStorage.setItem('bf_invoice_latest', JSON.stringify(invoiceData));
-            } catch (e) {}
+            } catch (e) { }
 
             if (typeof closeSheets === 'function') closeSheets();
 
@@ -1068,7 +1066,7 @@ async function submitPreorderDirect(opts) {
             // Encode items for receipt page
             try {
                 params.set('items', JSON.stringify(items.map(it => ({ name: it.name, qty: it.qty, price: it.price }))));
-            } catch (e) {}
+            } catch (e) { }
             window.location.href = `/order-details.html?${params.toString()}`;
             return;
         }
@@ -1272,37 +1270,37 @@ function sendCustomOrderChoice(choice, existingOrderID, orderData, name, phone) 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(choiceRequest)
     })
-    .then(async res => {
-        const text = await res.text();
-        try { return JSON.parse(text); }
-        catch (e) { return { success: false, message: text }; }
-    })
-    .then(data => {
-        console.log('📥 Custom choice response:', data);
-        if (data.success) {
-            completeOrderSubmission(data, name, phone, orderData);
-        } else {
-            showError(data.message || 'Failed to process order');
+        .then(async res => {
+            const text = await res.text();
+            try { return JSON.parse(text); }
+            catch (e) { return { success: false, message: text }; }
+        })
+        .then(data => {
+            console.log('📥 Custom choice response:', data);
+            if (data.success) {
+                completeOrderSubmission(data, name, phone, orderData);
+            } else {
+                showError(data.message || 'Failed to process order');
+                resetPreorderSubmitButton();
+            }
+        })
+        .catch(err => {
+            console.error('❌ Network error:', err);
+            showError('Network error. Please try again.');
             resetPreorderSubmitButton();
-        }
-    })
-    .catch(err => {
-        console.error('❌ Network error:', err);
-        showError('Network error. Please try again.');
-        resetPreorderSubmitButton();
-    });
+        });
 }
 
 // ========== Order Choice Dialog ==========
 function showOrderChoiceDialog(choiceData, orderData, name, phone) {
     console.log('🎨 Creating choice dialog');
-    
+
     // Remove any existing dialog first
     const existing = document.getElementById('orderChoiceDialog');
     if (existing) {
         existing.remove();
     }
-    
+
     // Create a modal dialog
     const dialog = document.createElement('div');
     dialog.id = 'orderChoiceDialog';
@@ -1320,7 +1318,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         animation: fadeIn 0.2s ease-out;
     `;
-    
+
     // Add animations if not already in document
     if (!document.getElementById('orderChoiceAnimations')) {
         const style = document.createElement('style');
@@ -1343,7 +1341,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
         `;
         document.head.appendChild(style);
     }
-    
+
     const content = document.createElement('div');
     content.style.cssText = `
         background: white;
@@ -1355,7 +1353,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
         text-align: center;
         animation: slideUp 0.3s ease-out;
     `;
-    
+
     const title = document.createElement('h2');
     title.textContent = 'Active Orders';
     title.style.cssText = `
@@ -1365,11 +1363,11 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
         color: #1a1a1a;
         letter-spacing: -0.5px;
     `;
-    
+
     const msg = document.createElement('p');
     const orderCount = choiceData.orders ? choiceData.orders.length : 1;
-    const orderTypeLabel = choiceData.order_type === 'custom' ? 'custom cake' : 
-                           choiceData.order_type === 'scheduled' ? 'scheduled' : '';
+    const orderTypeLabel = choiceData.order_type === 'custom' ? 'custom cake' :
+        choiceData.order_type === 'scheduled' ? 'scheduled' : '';
     msg.textContent = choiceData.block_new_order
         ? 'You already have a custom cake order. Select it to edit.'
         : `You have ${orderCount} active ${orderCount === 1 ? 'order' : 'orders'}. Add items to an existing order or start fresh?`;
@@ -1379,7 +1377,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
         color: #555;
         line-height: 1.6;
     `;
-    
+
     // Create order selection list
     const orderList = document.createElement('div');
     orderList.style.cssText = `
@@ -1389,7 +1387,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
         max-height: 300px;
         overflow-y: auto;
     `;
-    
+
     if (choiceData.orders && choiceData.orders.length > 0) {
         choiceData.orders.forEach(order => {
             const orderItem = document.createElement('div');
@@ -1404,7 +1402,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
             `;
             orderItem.onmouseover = () => { orderItem.style.background = '#f0f0f0'; };
             orderItem.onmouseout = () => { orderItem.style.background = 'transparent'; };
-            
+
             const orderInfo = document.createElement('div');
             orderInfo.textContent = order.summary;
             orderInfo.style.cssText = `
@@ -1413,7 +1411,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
                 color: #333;
                 font-weight: 500;
             `;
-            
+
             const selectBtn = document.createElement('button');
             selectBtn.textContent = 'Select';
             selectBtn.style.cssText = `
@@ -1433,20 +1431,20 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
                 dialog.remove();
                 sendOrderChoice('add_to_existing', order.id, orderData, name, phone);
             };
-            
+
             orderItem.appendChild(orderInfo);
             orderItem.appendChild(selectBtn);
             orderList.appendChild(orderItem);
         });
     }
-    
+
     const buttonGroup = document.createElement('div');
     buttonGroup.style.cssText = `
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
     `;
-    
+
     if (!choiceData.block_new_order) {
         const addBtn = document.createElement('button');
         addBtn.textContent = '✨ Create New Order Instead';
@@ -1464,11 +1462,11 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
             transition: all 0.3s ease;
             box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
         `;
-        addBtn.onmouseover = () => { 
+        addBtn.onmouseover = () => {
             addBtn.style.boxShadow = '0 6px 20px rgba(33, 150, 243, 0.4)';
             addBtn.style.transform = 'translateY(-2px)';
         };
-        addBtn.onmouseout = () => { 
+        addBtn.onmouseout = () => {
             addBtn.style.boxShadow = '0 4px 12px rgba(33, 150, 243, 0.3)';
             addBtn.style.transform = 'translateY(0)';
         };
@@ -1477,26 +1475,26 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
             dialog.remove();
             sendOrderChoice('new_order', null, orderData, name, phone);
         };
-        
+
         buttonGroup.appendChild(addBtn);
     }
-    
+
     content.appendChild(title);
     content.appendChild(msg);
     content.appendChild(orderList);
     content.appendChild(buttonGroup);
     dialog.appendChild(content);
-    
+
     document.body.appendChild(dialog);
     console.log('✅ Dialog appended to body');
 }
 
 function sendOrderChoice(choice, existingOrderID, orderData, name, phone) {
     console.log('📤 Sending order choice:', choice);
-    
+
     const tok = getAuthToken(); // Get the token using the same method
     const userId = getResolvedUserId(); // Get user_id for fallback auth
-    
+
     const choiceRequest = {
         choice: choice,
         order_id: existingOrderID || 0,
@@ -1506,54 +1504,54 @@ function sendOrderChoice(choice, existingOrderID, orderData, name, phone) {
         address: orderData.address,
         user_id: userId  // Include user_id for fallback authentication
     };
-    
+
     // Use relative URL with token parameter for ngrok compatibility
     const tokenParam = tok ? `?t=${encodeURIComponent(tok)}` : '';
     const apiUrl = `/api/chat/orders/choice${tokenParam}`;
-    
+
     console.log('📤 API URL:', apiUrl);
     console.log('📤 Token present:', !!tok);
     console.log('📤 User ID:', userId);
     console.log('📤 Request body:', JSON.stringify(choiceRequest));
-    
+
     fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(choiceRequest)
     })
-    .then(async res => {
-        console.log('📥 Response status:', res.status);
-        const text = await res.text();
-        console.log('📥 Response text:', text);
-        try {
-            return JSON.parse(text);
-        } catch (e) {
-            console.error('Failed to parse response:', e);
-            return { success: false, message: text };
-        }
-    })
-    .then(data => {
-        console.log('📥 Choice response:', data);
-        if (data.success) {
-            completeOrderSubmission(data, name, phone, orderData);
-        } else {
-            alert('❌ Error: ' + (data.message || 'Failed to process order'));
+        .then(async res => {
+            console.log('📥 Response status:', res.status);
+            const text = await res.text();
+            console.log('📥 Response text:', text);
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('Failed to parse response:', e);
+                return { success: false, message: text };
+            }
+        })
+        .then(data => {
+            console.log('📥 Choice response:', data);
+            if (data.success) {
+                completeOrderSubmission(data, name, phone, orderData);
+            } else {
+                alert('❌ Error: ' + (data.message || 'Failed to process order'));
+                resetSubmitButton();
+            }
+        })
+        .catch(err => {
+            console.error('❌ Network error:', err);
+            alert('❌ Network error: ' + err.message);
             resetSubmitButton();
-        }
-    })
-    .catch(err => {
-        console.error('❌ Network error:', err);
-        alert('❌ Network error: ' + err.message);
-        resetSubmitButton();
-    });
+        });
 }
 
 function completeOrderSubmission(data, name, phone, orderData) {
     const orderId = data.orderID || data.order_id;
-    const orderMsg = data.action === 'items_merged' 
+    const orderMsg = data.action === 'items_merged'
         ? `Items added to order #${orderId}!`
         : `Order #${orderId} placed successfully!`;
-    
+
     showToast(orderMsg, 'success');
 
     // Store invoice data in localStorage for the receipt page

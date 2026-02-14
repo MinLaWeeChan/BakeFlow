@@ -183,7 +183,11 @@ func AdminGetPayments(w http.ResponseWriter, r *http.Request) {
 	rows, err := configs.DB.Query(query, args...)
 	if err != nil {
 		log.Printf("❌ Error fetching payments: %v", err)
-		http.Error(w, "Failed to fetch payments", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Failed to fetch payments",
+		})
 		return
 	}
 	defer rows.Close()
@@ -223,19 +227,31 @@ func AdminVerifyPayment(w http.ResponseWriter, r *http.Request) {
 		Status string `json:"status"` // "verified", "rejected"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Invalid request",
+		})
 		return
 	}
 
 	if req.Status != "verified" && req.Status != "rejected" {
-		http.Error(w, "Invalid status", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Invalid status",
+		})
 		return
 	}
 
 	// Begin transaction
 	tx, err := configs.DB.Begin()
 	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Database error",
+		})
 		return
 	}
 	defer tx.Rollback()
@@ -244,7 +260,11 @@ func AdminVerifyPayment(w http.ResponseWriter, r *http.Request) {
 	_, err = tx.Exec("UPDATE payments SET status = $1 WHERE id = $2", req.Status, paymentID)
 	if err != nil {
 		log.Printf("❌ Failed to update payment status: %v", err)
-		http.Error(w, "Failed to update payment", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Failed to update payment",
+		})
 		return
 	}
 
@@ -259,7 +279,11 @@ func AdminVerifyPayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tx.Commit(); err != nil {
-		http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Failed to commit transaction",
+		})
 		return
 	}
 

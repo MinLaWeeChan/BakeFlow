@@ -19,17 +19,17 @@ func handlePostback(userID, payload string) {
 		state.Language = "en"
 		state.State = "greeting"
 		SendMessage(userID, "✅ English selected!")
-		startOrderingFlow(userID)
+		ShowWebviewOrderForm(userID)
 
 	case "LANG_MY":
 		state.Language = "my"
 		state.State = "greeting"
 		SendMessage(userID, "✅ မြန်မာဘာသာ ရွေးချယ်ပြီးပါပြီ!")
-		startOrderingFlow(userID)
+		ShowWebviewOrderForm(userID)
 
 	// Persistent Menu Actions (from ☰ menu)
 	case "MENU_ORDER":
-		startOrderingFlow(userID)
+		ShowWebviewOrderForm(userID)
 
 	case "MENU_ORDER_HISTORY":
 		showOrderHistory(userID)
@@ -40,19 +40,9 @@ func handlePostback(userID, payload string) {
 	case "MENU_CHANGE_LANG":
 		showLanguageSelection(userID)
 
-	// Main Menu Actions (from card buttons)
-	case "MENU_ORDER_PRODUCTS":
-		showProducts(userID)
-
+	// Menu Help button
 	case "MENU_HELP":
 		showHelp(userID)
-
-	case "GET_STARTED":
-		showLanguageSelection(userID)
-
-	// Order Now / Order Again button
-	case "ORDER_NOW":
-		startOrderingFlow(userID)
 
 	// Track Order button - show recent order status (legacy, shows latest)
 	case "TRACK_ORDER":
@@ -67,193 +57,19 @@ func handlePostback(userID, payload string) {
 			return
 		}
 
-	// Product selection
-	case "ORDER_CHOCOLATE_CAKE":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Chocolate Cake"].Name
-		state.CurrentEmoji = ProductCatalog["Chocolate Cake"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_VANILLA_CAKE":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Vanilla Cake"].Name
-		state.CurrentEmoji = ProductCatalog["Vanilla Cake"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_RED_VELVET":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Red Velvet"].Name
-		state.CurrentEmoji = ProductCatalog["Red Velvet"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_CROISSANT":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Croissant"].Name
-		state.CurrentEmoji = ProductCatalog["Croissant"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_CINNAMON_ROLL":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Cinnamon Roll"].Name
-		state.CurrentEmoji = ProductCatalog["Cinnamon Roll"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_CUPCAKE":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Chocolate Cupcake"].Name
-		state.CurrentEmoji = ProductCatalog["Chocolate Cupcake"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_COFFEE":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Coffee"].Name
-		state.CurrentEmoji = ProductCatalog["Coffee"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_BREAD":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Bread"].Name
-		state.CurrentEmoji = ProductCatalog["Bread"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	case "ORDER_CHOCOLATE_CUPCAKE":
-		if state.State != "awaiting_product" {
-			SendMessage(userID, "⚠️ Please complete your current step first, or type 'cancel' to start over.")
-			return
-		}
-		state.CurrentProduct = ProductCatalog["Chocolate Cupcake"].Name
-		state.CurrentEmoji = ProductCatalog["Chocolate Cupcake"].Emoji
-		state.State = "awaiting_quantity"
-		SendTypingIndicator(userID, true)
-		askQuantity(userID)
-
-	// Quantity selection
-	case "QTY_1":
-		if state.State != "awaiting_quantity" {
-			SendMessage(userID, "⚠️ Please select a product first!")
-			return
-		}
-		state.CurrentQuantity = 1
-		SendTypingIndicator(userID, true)
-		addToCart(userID)
-
-	case "QTY_2":
-		if state.State != "awaiting_quantity" {
-			SendMessage(userID, "⚠️ Please select a product first!")
-			return
-		}
-		state.CurrentQuantity = 2
-		SendTypingIndicator(userID, true)
-		addToCart(userID)
-
-	case "QTY_3":
-		if state.State != "awaiting_quantity" {
-			SendMessage(userID, "⚠️ Please select a product first!")
-			return
-		}
-		state.CurrentQuantity = 3
-		SendTypingIndicator(userID, true)
-		addToCart(userID)
-
-	case "QTY_4":
-		if state.State != "awaiting_quantity" {
-			SendMessage(userID, "⚠️ Please select a product first!")
-			return
-		}
-		state.CurrentQuantity = 4
-		SendTypingIndicator(userID, true)
-		addToCart(userID)
-
-	case "QTY_5":
-		if state.State != "awaiting_quantity" {
-			SendMessage(userID, "⚠️ Please select a product first!")
-			return
-		}
-		state.CurrentQuantity = 5
-		SendTypingIndicator(userID, true)
-		addToCart(userID)
-
-	// Cart actions
-	case "ADD_MORE_ITEMS":
-		showProducts(userID)
-
-	case "CHECKOUT":
-		// Show cart and ask for name
-		showCart(userID)
-		SendTypingIndicator(userID, true)
-		askName(userID)
-
-	// Navigation
-	case "GO_BACK":
-		goBack(userID)
-
-	case "MAIN_MENU":
-		ResetUserState(userID)
-		startOrderingFlow(userID)
-
-	// Delivery type
-	case "PICKUP":
-		state.DeliveryType = "pickup"
-		state.Address = "Pickup at store"
-		state.State = "confirming"
-		SendTypingIndicator(userID, true)
-		showOrderSummary(userID)
-
-	case "DELIVERY":
-		state.DeliveryType = "delivery"
-		state.State = "awaiting_address"
-
-		// Add navigation options when asking for address
-		quickReplies := []QuickReply{
-			{ContentType: "text", Title: "⬅️ Back", Payload: "GO_BACK"},
-			{ContentType: "text", Title: "❌ Cancel", Payload: "CANCEL_ORDER"},
-		}
-		SendQuickReplies(userID, "Perfect! Please type your delivery address:\n(Street, City, ZIP)", quickReplies)
-
-	// Order confirmation
-	case "CONFIRM_ORDER":
-		SendTypingIndicator(userID, true)
-		confirmOrder(userID)
+	// CHAT-BASED ORDERING REMOVED - Only webview form ordering supported
+	// These cases are kept in the switch for reference but redirected to webview
+	case "MENU_ORDER_PRODUCTS", "ORDER_NOW", "GET_STARTED":
+		fallthrough
+	case "ORDER_CHOCOLATE_CAKE", "ORDER_VANILLA_CAKE", "ORDER_RED_VELVET", "ORDER_CROISSANT", "ORDER_CINNAMON_ROLL", "ORDER_CUPCAKE", "ORDER_COFFEE", "ORDER_BREAD", "ORDER_CHOCOLATE_CUPCAKE":
+		fallthrough
+	case "QTY_1", "QTY_2", "QTY_3", "QTY_4", "QTY_5":
+		fallthrough
+	case "ADD_MORE_ITEMS", "CHECKOUT", "GO_BACK", "MAIN_MENU":
+		fallthrough
+	case "PICKUP", "DELIVERY", "CONFIRM_ORDER":
+		// Chat-based ordering has been removed - user should use webview form
+		ShowWebviewOrderForm(userID)
 
 	case "CANCEL_ORDER":
 		ResetUserState(userID)
@@ -281,7 +97,7 @@ func handlePostback(userID, payload string) {
 
 	// Special actions
 	case "SHOW_MENU":
-		showMenu(userID)
+		ShowWebviewOrderForm(userID)
 
 	// Rating actions (order-level)
 	case "RATING_1":
@@ -343,7 +159,8 @@ func handlePostback(userID, payload string) {
 					state.CurrentEmoji = emoji
 					state.State = "awaiting_quantity"
 					SendTypingIndicator(userID, true)
-					askQuantity(userID)
+					SendMessage(userID, "Please use the order form to select quantity. Tap 'Order' button!")
+					ShowWebviewOrderForm(userID)
 					return
 				}
 			}

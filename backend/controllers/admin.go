@@ -1155,9 +1155,15 @@ func AdminCancelOrder(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Professional cancellation message
+			// Professional cancellation message with reason included
 			title := "Order cancelled"
 			subtitle := fmt.Sprintf("Order #BF-%d\n\nWe're sorry we couldn't complete your order.\nWe hope to serve you again soon.", order.ID)
+
+			// Include reason in the card if provided
+			if reason != "" {
+				subtitle = fmt.Sprintf("Order #BF-%d\n\nReason: %s\n\nWe hope to serve you again soon.", order.ID, reason)
+			}
+
 			buttons := []Button{
 				{Type: "postback", Title: "Order Again", Payload: "ORDER_NOW"},
 				{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
@@ -1166,18 +1172,13 @@ func AdminCancelOrder(w http.ResponseWriter, r *http.Request) {
 			err := SendOrderCard(order.SenderID, order.ID, title, subtitle, productImage, buttons)
 			if err != nil {
 				log.Printf("[Notify] Card failed for order #%d: %v", order.ID, err)
-				SendMessage(order.SenderID, fmt.Sprintf("Your order #BF-%d has been cancelled. We apologize for the inconvenience.", order.ID))
+				fallbackMsg := fmt.Sprintf("Your order #BF-%d has been cancelled. We apologize for the inconvenience.", order.ID)
+				if reason != "" {
+					fallbackMsg = fmt.Sprintf("Your order #BF-%d has been cancelled.\n\nReason: %s\n\nWe apologize for the inconvenience.", order.ID, reason)
+				}
+				SendMessage(order.SenderID, fallbackMsg)
 			} else {
 				log.Printf("[Notify] Cancellation notification sent for order #%d", order.ID)
-			}
-
-			// Send reason as a separate follow-up message (if provided)
-			if reason != "" {
-				time.Sleep(500 * time.Millisecond) // Small delay so messages arrive in order
-				reasonText := fmt.Sprintf("Reason: %s\n\nIf you have any questions, please contact us.", reason)
-				if err := SendMessage(order.SenderID, reasonText); err != nil {
-					log.Printf("[Notify] Failed to send reason for order #%d: %v", order.ID, err)
-				}
 			}
 		}(currentOrder, requestBody.Reason)
 	} else {
