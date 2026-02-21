@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 
 export default function AdminLoginPage() {
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
   const router = useRouter();
 
   const [identifier, setIdentifier] = useState('');
@@ -163,4 +163,3 @@ export default function AdminLoginPage() {
     </>
   );
 }
-

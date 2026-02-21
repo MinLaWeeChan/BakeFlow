@@ -9,7 +9,7 @@ import { useTranslation } from '../../utils/i18n';
 import { formatCurrency } from '../../utils/formatCurrency';
 
 export default function ProductsPage() {
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
   const PRODUCT_CACHE_KEY = 'bf_admin_products_cache';
   const PREORDER_CACHE_KEY = 'bf_admin_preorder_settings_cache';
   const [products, setProducts] = useState([]);

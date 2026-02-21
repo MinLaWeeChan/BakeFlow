@@ -7,7 +7,7 @@ import TopNavbar from '../../../components/TopNavbar';
 import { useNotifications } from '../../../contexts/NotificationContext';
 
 export default function NewProductPage() {
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
   const { notifications, unreadCount, hasUnread, markAsRead, markAllRead, clearAll } = useNotifications();
 
   const [name, setName] = useState('');

@@ -1397,7 +1397,11 @@ func resolveFrontendBaseURL() string {
 		baseURL = strings.TrimSpace(os.Getenv("FRONTEND_URL"))
 	}
 	if baseURL == "" {
-		baseURL = "http://localhost:3000"
+		if strings.TrimSpace(os.Getenv("RENDER")) != "" || strings.TrimSpace(os.Getenv("RENDER_EXTERNAL_URL")) != "" {
+			baseURL = "https://bake-flow-amber.vercel.app"
+		} else {
+			baseURL = "http://localhost:3000"
+		}
 	}
 	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
 		baseURL = "https://" + baseURL

@@ -8,9 +8,7 @@ export default function PromotionsPage() {
   const API_BASE = (() => {
     const fromEnv = process.env.NEXT_PUBLIC_API_BASE;
     if (fromEnv) return fromEnv;
-    if (typeof window === 'undefined') return 'http://localhost:8080';
-    const { protocol, hostname } = window.location;
-    return `${protocol}//${hostname}:8080`;
+    return 'https://bakeflow.onrender.com';
   })();
 
   const buildAuthHeaders = useCallback((extra = {}) => {

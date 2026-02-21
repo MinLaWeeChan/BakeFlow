@@ -945,16 +945,10 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 
 				// Generate rating webview URL with signed token
 				ratingToken, _ := GenerateWebviewToken(order.SenderID, 24*7*time.Hour) // 7 days to rate
-				baseURL := strings.TrimSpace(os.Getenv("WEBVIEW_BASE_URL"))
-				// If user provided domain without scheme, default to https://
-				if baseURL != "" && !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
-					baseURL = "https://" + baseURL
-				}
-				baseURL = strings.TrimRight(baseURL, "/")
+				baseURL := resolveFrontendBaseURL()
 
 				var ratingURL string
 				if baseURL != "" {
-					// Validate URL
 					if u, err := url.Parse(baseURL); err == nil && u.Scheme != "" && u.Host != "" {
 						ratingURL = fmt.Sprintf("%s/rate-order.html?order_id=%d&user_id=%s", baseURL, order.ID, url.QueryEscape(order.SenderID))
 						if ratingToken != "" {
@@ -963,8 +957,6 @@ func AdminUpdateOrderStatus(w http.ResponseWriter, r *http.Request) {
 					} else {
 						log.Printf("[Notify] Invalid WEBVIEW_BASE_URL='%s'; using postback rating", baseURL)
 					}
-				} else {
-					log.Printf("[Notify] WEBVIEW_BASE_URL not set; using postback rating")
 				}
 
 				// Build buttons: use webview if available, otherwise postback

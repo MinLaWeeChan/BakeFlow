@@ -11,7 +11,7 @@ export default function ProductFormPage() {
   const router = useRouter();
   const { id } = router.query;
   const isEdit = id && id !== 'new';
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loading, setLoading] = useState(false);

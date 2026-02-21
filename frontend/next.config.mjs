@@ -13,6 +13,7 @@ const nextConfig = {
 
   // Serve static HTML files from public folder
   async rewrites() {
+    const backendBase = (process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com').replace(/\/+$/, '');
     return [
       {
         source: '/order-form.html',
@@ -28,27 +29,27 @@ const nextConfig = {
       },
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8080/api/:path*'
+        destination: `${backendBase}/api/:path*`
       },
       {
         source: '/qr_codes/:path*',
-        destination: 'http://localhost:8080/qr_codes/:path*'
+        destination: `${backendBase}/qr_codes/:path*`
       },
       {
         source: '/uploads/:path*',
-        destination: 'http://localhost:8080/uploads/:path*'
+        destination: `${backendBase}/uploads/:path*`
       },
       {
         source: '/webhook',
-        destination: 'http://localhost:8080/webhook'
+        destination: `${backendBase}/webhook`
       },
       {
         source: '/promotions/:path*',
-        destination: 'http://localhost:8080/promotions/:path*'
+        destination: `${backendBase}/promotions/:path*`
       },
       {
         source: '/checkout',
-        destination: 'http://localhost:8080/checkout'
+        destination: `${backendBase}/checkout`
       },
       {
         source: '/css/:path*',

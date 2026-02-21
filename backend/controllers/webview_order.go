@@ -18,11 +18,7 @@ func ShowWebviewOrderForm(userID string) {
 	state := GetUserState(userID)
 
 	// Build webview URL (opens inside Messenger)
-	// Configure base domain via WEBVIEW_BASE_URL (e.g. https://<your-ngrok>.ngrok-free.dev)
-	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("WEBVIEW_BASE_URL")), "/")
-	if baseURL == "" {
-		baseURL = "https://nonfortifying-karin-undistantly.ngrok-free.dev"
-	}
+	baseURL := resolveFrontendBaseURL()
 
 	// Signed token binds this webview session to the Messenger PSID.
 	// NOTE: Requires WEBVIEW_TOKEN_SECRET to be set.

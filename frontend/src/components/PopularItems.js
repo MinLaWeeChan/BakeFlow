@@ -5,11 +5,12 @@ import Image from 'next/image';
 export default function PopularItems({ items, loading }) {
   const { t } = useTranslation();
   const [products, setProducts] = useState({});
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
   
   // Fetch product details to get images
   useEffect(() => {
     if (items && items.length > 0) {
-      fetch('http://localhost:8080/api/products')
+      fetch(`${apiBase}/api/products`)
         .then(res => res.json())
         .then(data => {
           const productMap = {};
@@ -20,7 +21,7 @@ export default function PopularItems({ items, loading }) {
         })
         .catch(err => console.error('Failed to load products:', err));
     }
-  }, [items]);
+  }, [apiBase, items]);
   
   return (
     <div className="card border-0 shadow-sm mb-4">

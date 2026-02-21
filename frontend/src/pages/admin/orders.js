@@ -12,7 +12,7 @@ import { useNotifications } from '../../contexts/NotificationContext';
 import { useTranslation } from '../../utils/i18n';
 
 export default function OrdersPage() {
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
 
   const buildAuthHeaders = useCallback((extra = {}) => {
     if (typeof window === 'undefined') return { ...extra };
@@ -58,7 +58,7 @@ export default function OrdersPage() {
         console.error('Failed to load seen orders:', e);
       }
     }
-  }, []);
+  }, [API_BASE]);
 
   // Save seen orders to localStorage whenever it changes
   const updateSeenOrders = useCallback((orderIds) => {
@@ -392,10 +392,10 @@ export default function OrdersPage() {
       return `${start} - ${end}`;
     };
 
-    const res = await fetch('http://localhost:8080/api/admin/orders?order_status=delivered');
+    const res = await fetch(`${API_BASE}/api/admin/orders?order_status=delivered`);
     const data = await res.json().catch(() => ({}));
     const exportOrders = Array.isArray(data.orders) ? data.orders : [];
-    const productsRes = await fetch('http://localhost:8080/api/products?include_stock=1&limit=1000');
+    const productsRes = await fetch(`${API_BASE}/api/products?include_stock=1&limit=1000`);
     const productsData = await productsRes.json().catch(() => ({}));
     const products = Array.isArray(productsData.products) ? productsData.products : [];
     const deliveredOrders = exportOrders.filter(order => {
@@ -563,7 +563,7 @@ export default function OrdersPage() {
     });
     const fileName = `sales-report_${formatDateKey(new Date())}.xlsx`;
     XLSX.writeFile(workbook, fileName);
-  }, []);
+  }, [API_BASE]);
 
   const getStatusSteps = (currentStatus) => {
     const steps = [

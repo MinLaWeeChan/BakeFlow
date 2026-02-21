@@ -16,7 +16,7 @@ export default function OrdersArchivePage() {
     const fetchOrders = async () => {
       try {
         setError(null);
-        const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+        const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
         const res = await fetch(`${API_BASE}/api/admin/orders`);
         const data = await res.json();
         if (data.error) {

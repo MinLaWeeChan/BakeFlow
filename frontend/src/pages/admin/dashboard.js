@@ -13,7 +13,7 @@ import { formatCurrency } from '../../utils/formatCurrency';
 import { useNotifications } from '../../contexts/NotificationContext';
 
 export default function AdminDashboard() {
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://bakeflow.onrender.com';
   const router = useRouter();
 
   const buildAuthHeaders = useCallback((extra = {}) => {

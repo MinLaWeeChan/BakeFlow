@@ -3,7 +3,6 @@ package controllers
 import (
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"bakeflow/models"
@@ -257,7 +256,7 @@ func showOrderTracking(userID string, orderID int) {
 	}
 
 	var buttons []Button
-	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("WEBVIEW_BASE_URL")), "/")
+	baseURL := resolveFrontendBaseURL()
 	if baseURL != "" {
 		detailsURL := fmt.Sprintf("%s/order-details.html?order_id=%d", baseURL, order.ID)
 		buttons = append(buttons, Button{
