@@ -549,25 +549,7 @@ function processOrderSubmission(name, phone, address, notes, deliveryType, userI
                     console.log('Failed to store invoice', e);
                 }
 
-                const params = new URLSearchParams();
-                if (data.order_id != null) params.set('order_id', data.order_id);
-                if (userId) params.set('user_id', userId);
-                params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
-                if (name) params.set('customer_name', name);
-                if (phone) params.set('customer_phone', phone);
-                if (address) params.set('address', deliveryType === 'delivery' ? address : 'Pickup at store');
-                if (combinedNotes) params.set('notes', combinedNotes);
-
-                if (window.currentCheckout) {
-                    if (window.currentCheckout.subtotal != null) params.set('subtotal', window.currentCheckout.subtotal);
-                    if (window.currentCheckout.discount != null) params.set('discount', window.currentCheckout.discount);
-                    if (window.currentCheckout.delivery_fee != null) params.set('delivery_fee', window.currentCheckout.delivery_fee);
-                    if (window.currentCheckout.total != null) params.set('total', window.currentCheckout.total);
-                }
-                if (data.total != null) params.set('total', data.total);
-                if (data.total_amount != null) params.set('total_amount', data.total_amount);
-
-                window.location.href = `/order-details.html?${params.toString()}`;
+                window.location.href = `/order/${data.order_id}`;
             } else {
                 // Handle specific errors (like insufficient stock)
                 if (data && data.error === 'insufficient_stock') {
@@ -666,12 +648,6 @@ async function submitPreorder(preorder) {
     const phoneRaw = document.getElementById('customerPhone')?.value.trim() || '';
     const address = document.getElementById('customerAddress')?.value.trim() || '';
     const deliveryType = window.getDeliveryType ? window.getDeliveryType() : '';
-
-    const blockMsg = getActiveOrderBlockMessage();
-    if (blockMsg) {
-        showError(blockMsg);
-        return;
-    }
 
     // ── Inline validation with field highlighting ──
     clearFieldErrors();
@@ -794,6 +770,12 @@ async function submitPreorder(preorder) {
             data = { success: false, message: text };
         }
 
+        if (data && data.action === 'existing_custom_order') {
+            showCustomOrderChoiceDialog(data, orderData, name, phone);
+            resetPreorderSubmitButton();
+            return;
+        }
+
         if (data && data.action === 'ask_user_choice') {
             showOrderChoiceDialog(data, orderData, name, phone);
             resetPreorderSubmitButton();
@@ -818,17 +800,7 @@ async function submitPreorder(preorder) {
             if (typeof closeSheets === 'function') closeSheets();
             window.pendingPreorderDraft = null;
 
-            const params = new URLSearchParams();
-            if (data.order_id != null) params.set('order_id', data.order_id);
-            if (userId) params.set('user_id', userId);
-            params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
-            if (name) params.set('customer_name', name);
-            if (phone) params.set('customer_phone', phone);
-            if (address) params.set('address', deliveryType === 'delivery' ? address : 'Pickup at store');
-            params.set('notes', orderData.notes);
-            if (data.total != null) params.set('total', data.total);
-            if (data.total_amount != null) params.set('total_amount', data.total_amount);
-            window.location.href = `/order-details.html?${params.toString()}`;
+            window.location.href = `/order/${data.order_id}`;
             return;
         }
 
@@ -1054,20 +1026,7 @@ async function submitPreorderDirect(opts) {
 
             if (typeof closeSheets === 'function') closeSheets();
 
-            const params = new URLSearchParams();
-            if (data.order_id != null) params.set('order_id', data.order_id);
-            if (userId) params.set('user_id', userId);
-            params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
-            if (name) params.set('customer_name', name);
-            if (phone) params.set('customer_phone', phone);
-            if (address) params.set('address', address);
-            params.set('subtotal', totalPrice);
-            params.set('total', totalPrice);
-            // Encode items for receipt page
-            try {
-                params.set('items', JSON.stringify(items.map(it => ({ name: it.name, qty: it.qty, price: it.price }))));
-            } catch (e) { }
-            window.location.href = `/order-details.html?${params.toString()}`;
+            window.location.href = `/order/${data.order_id}`;
             return;
         }
 
@@ -1133,7 +1092,13 @@ function showCustomOrderChoiceDialog(choiceData, orderData, name, phone) {
     `;
 
     const msg = document.createElement('p');
-    msg.textContent = `You already have a custom cake order. What would you like to do?`;
+    const orderLabel = existingOrderId ? `(#BF-${existingOrderId})` : '';
+    const isAddBlocked = choiceData && choiceData.allow_add === false;
+    const isUpdateBlocked = choiceData && choiceData.allow_update === false;
+    const messageText = isAddBlocked && isUpdateBlocked
+        ? `You already have a custom cake order ${orderLabel} being prepared. You can create a new order.`
+        : `You already have a custom cake order ${orderLabel}. Add to it or create a new order.`;
+    msg.textContent = messageText;
     msg.style.cssText = `
         margin: 0 0 24px 0; font-size: 15px; color: #555; line-height: 1.6;
     `;
@@ -1147,85 +1112,69 @@ function showCustomOrderChoiceDialog(choiceData, orderData, name, phone) {
     orderItem.style.cssText = `
         padding: 12px 16px; display: flex;
         justify-content: space-between; align-items: center;
+        border-bottom: 1px solid #eee;
+        transition: background 0.2s;
     `;
+    orderItem.onmouseover = () => { orderItem.style.background = '#f0f0f0'; };
+    orderItem.onmouseout = () => { orderItem.style.background = 'transparent'; };
     const orderInfo = document.createElement('div');
-    orderInfo.textContent = `Order #BF-${existingOrderId} • ${existingOrder.items || 0} items • $${Number(existingOrder.amount || 0).toFixed(2)}`;
+    const statusLabel = (existingOrder.status || 'pending').toUpperCase();
+    orderInfo.textContent = `Order #BF-${existingOrderId} • ${existingOrder.items || 0} items • $${Number(existingOrder.amount || 0).toFixed(2)} • ${statusLabel}`;
     orderInfo.style.cssText = `
         flex: 1; font-size: 14px; color: #333; font-weight: 500;
     `;
-    const statusBadge = document.createElement('span');
-    statusBadge.textContent = (existingOrder.status || 'pending').toUpperCase();
-    statusBadge.style.cssText = `
-        padding: 4px 10px; background: #FFF3E0; color: #E65100;
-        border-radius: 4px; font-size: 11px; font-weight: 600;
+    const allowAdd = !(choiceData && choiceData.allow_add === false);
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'Select';
+    addBtn.style.cssText = `
+        padding: 6px 12px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background 0.2s;
     `;
+    addBtn.onmouseover = () => { addBtn.style.background = '#45a049'; };
+    addBtn.onmouseout = () => { addBtn.style.background = '#4CAF50'; };
+    addBtn.onclick = () => {
+        dialog.remove();
+        sendCustomOrderChoice('add_to_existing', existingOrderId, orderData, name, phone);
+    };
     orderItem.appendChild(orderInfo);
-    orderItem.appendChild(statusBadge);
+    if (allowAdd) {
+        orderItem.appendChild(addBtn);
+    }
     orderList.appendChild(orderItem);
 
     // Button group
     const buttonGroup = document.createElement('div');
     buttonGroup.style.cssText = `
-        display: flex; flex-direction: column; gap: 12px;
+        display: flex; gap: 12px; flex-wrap: wrap;
     `;
 
-    // Add Items button
-    const addBtn = document.createElement('button');
-    addBtn.textContent = '➕ Add Items to This Order';
-    addBtn.style.cssText = `
-        width: 100%; padding: 14px 24px;
-        background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
-        color: white; border: none; border-radius: 8px;
-        font-size: 15px; font-weight: 600; cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
-    `;
-    addBtn.onmouseover = () => { addBtn.style.boxShadow = '0 6px 20px rgba(76,175,80,0.4)'; addBtn.style.transform = 'translateY(-2px)'; };
-    addBtn.onmouseout = () => { addBtn.style.boxShadow = '0 4px 12px rgba(76,175,80,0.3)'; addBtn.style.transform = 'translateY(0)'; };
-    addBtn.onclick = () => {
-        dialog.remove();
-        sendCustomOrderChoice('add_to_existing', existingOrderId, orderData, name, phone);
-    };
-
-    // Update (replace) button
-    const updateBtn = document.createElement('button');
-    updateBtn.textContent = '✏️ Replace With New Selections';
-    updateBtn.style.cssText = `
-        width: 100%; padding: 14px 24px;
-        background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
-        color: white; border: none; border-radius: 8px;
-        font-size: 15px; font-weight: 600; cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 12px rgba(255, 152, 0, 0.3);
-    `;
-    updateBtn.onmouseover = () => { updateBtn.style.boxShadow = '0 6px 20px rgba(255,152,0,0.4)'; updateBtn.style.transform = 'translateY(-2px)'; };
-    updateBtn.onmouseout = () => { updateBtn.style.boxShadow = '0 4px 12px rgba(255,152,0,0.3)'; updateBtn.style.transform = 'translateY(0)'; };
-    updateBtn.onclick = () => {
-        dialog.remove();
-        sendCustomOrderChoice('update_custom', existingOrderId, orderData, name, phone);
-    };
-
-    // Cancel & new button
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = '🔄 Cancel & Start Fresh';
-    cancelBtn.style.cssText = `
-        width: 100%; padding: 14px 24px;
+    const allowNew = !(choiceData && choiceData.allow_new === false);
+    const newBtn = document.createElement('button');
+    newBtn.textContent = 'Create New Order Instead';
+    newBtn.style.cssText = `
+        flex: 1; min-width: 200px; padding: 14px 24px;
         background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
         color: white; border: none; border-radius: 8px;
         font-size: 15px; font-weight: 600; cursor: pointer;
         transition: all 0.3s ease;
         box-shadow: 0 4px 12px rgba(33, 150, 243, 0.3);
     `;
-    cancelBtn.onmouseover = () => { cancelBtn.style.boxShadow = '0 6px 20px rgba(33,150,243,0.4)'; cancelBtn.style.transform = 'translateY(-2px)'; };
-    cancelBtn.onmouseout = () => { cancelBtn.style.boxShadow = '0 4px 12px rgba(33,150,243,0.3)'; cancelBtn.style.transform = 'translateY(0)'; };
-    cancelBtn.onclick = () => {
+    newBtn.onmouseover = () => { newBtn.style.boxShadow = '0 6px 20px rgba(33,150,243,0.4)'; newBtn.style.transform = 'translateY(-2px)'; };
+    newBtn.onmouseout = () => { newBtn.style.boxShadow = '0 4px 12px rgba(33,150,243,0.3)'; newBtn.style.transform = 'translateY(0)'; };
+    newBtn.onclick = () => {
         dialog.remove();
-        sendCustomOrderChoice('cancel_custom', existingOrderId, orderData, name, phone);
+        sendCustomOrderChoice('new_order', existingOrderId, orderData, name, phone);
     };
 
-    buttonGroup.appendChild(addBtn);
-    buttonGroup.appendChild(updateBtn);
-    buttonGroup.appendChild(cancelBtn);
+    if (allowNew) {
+        buttonGroup.appendChild(newBtn);
+    }
 
     content.appendChild(title);
     content.appendChild(msg);
@@ -1447,7 +1396,7 @@ function showOrderChoiceDialog(choiceData, orderData, name, phone) {
 
     if (!choiceData.block_new_order) {
         const addBtn = document.createElement('button');
-        addBtn.textContent = '✨ Create New Order Instead';
+        addBtn.textContent = 'Create New Order Instead';
         addBtn.style.cssText = `
             flex: 1;
             min-width: 200px;
@@ -1584,23 +1533,5 @@ function completeOrderSubmission(data, name, phone, orderData) {
         console.log('Failed to store invoice', e);
     }
 
-    // Build receipt URL with params
-    const userId = getResolvedUserId();
-    const deliveryType = data.delivery_type || orderData.delivery_type || '';
-    const params = new URLSearchParams();
-    if (orderId != null) params.set('order_id', orderId);
-    if (userId) params.set('user_id', userId);
-    params.set('delivery_type', deliveryType === 'pickup' ? 'Pick Up' : 'Delivery');
-    if (name) params.set('customer_name', data.customer_name || name);
-    if (phone) params.set('customer_phone', phone);
-    const address = data.address || orderData.address || '';
-    if (address) params.set('address', deliveryType === 'delivery' ? address : 'Pickup at store');
-    if (data.subtotal != null) params.set('subtotal', data.subtotal);
-    if (data.discount != null) params.set('discount', data.discount);
-    if (data.delivery_fee != null) params.set('delivery_fee', data.delivery_fee);
-    if (data.total != null) params.set('total', data.total);
-    if (data.total_amount != null) params.set('total_amount', data.total_amount);
-
-    // Redirect to receipt page
-    window.location.href = `/order-details.html?${params.toString()}`;
+    window.location.href = `/order/${orderId}`;
 }

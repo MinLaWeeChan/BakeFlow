@@ -14,30 +14,33 @@
       color:var(--gray-800);
     }
     .page{max-width:var(--content-max-width);margin:0 auto;padding:28px 16px 40px}
-    .confirm-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;margin-bottom:24px}
-    .success-icon{width:72px;height:72px;border-radius:var(--radius-full);background:var(--success-light);color:var(--success);display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:800}
-    .confirm-title{font-size:24px;font-weight:800;letter-spacing:-0.01em;color:var(--gray-900)}
-    .confirm-text{font-size:14px;color:var(--gray-500)}
     .muted{color:var(--gray-500);font-size:13px}
+    .tracking-card{background:var(--warm-white);border:1px solid var(--gray-200);border-radius:20px;padding:22px;margin:12px 0;box-shadow:var(--shadow-xs)}
+    .tracking-header{display:flex;flex-direction:column;gap:6px}
+    .tracking-title{font-size:20px;font-weight:800;color:var(--gray-900)}
+    .tracking-id{font-size:14px;color:var(--gray-600);font-weight:700}
+    .divider{height:1px;background:var(--gray-200);margin:16px 0}
+    .status-block{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+    .status-badge{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:var(--gray-900)}
+    .status-text{font-size:13px;color:var(--gray-600)}
+    .section{margin-top:16px}
+    .section-label{font-size:12px;color:var(--gray-500);font-weight:700;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px}
+    .items-list{display:flex;flex-direction:column;gap:8px}
+    .item-line{font-size:14px;color:var(--gray-800);font-weight:600}
+    .summary-row{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px;margin-top:14px}
+    .summary-item{display:flex;flex-direction:column;gap:4px}
+    .summary-label{font-size:12px;color:var(--gray-500);font-weight:700;text-transform:uppercase;letter-spacing:0.04em}
+    .summary-value{font-size:15px;font-weight:800;color:var(--gray-900)}
+    .progress-steps{display:flex;flex-direction:column;gap:10px}
+    .progress-step{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--gray-600)}
+    .progress-step .dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--gray-300);background:transparent}
+    .progress-step.active{color:var(--gray-900);font-weight:700}
+    .progress-step.active .dot{background:#f59e0b;border-color:#f59e0b}
+    .progress-step.completed{color:var(--gray-700)}
+    .progress-step.completed .dot{background:#10b981;border-color:#10b981}
+    .address-text{font-size:13px;color:var(--gray-700);line-height:1.5}
     .card{background:var(--warm-white);border:1px solid var(--gray-200);border-radius:var(--radius-lg);padding:16px;margin:12px 0;box-shadow:var(--shadow-xs)}
     .card-title{font-weight:800;font-size:15px;margin-bottom:10px;color:var(--gray-800)}
-    .summary-grid{display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:12px}
-    .summary-item{display:flex;flex-direction:column;gap:4px}
-    .summary-label{font-size:12px;color:var(--gray-500);font-weight:600;text-transform:uppercase;letter-spacing:0.04em}
-    .summary-value{font-size:14px;font-weight:700;color:var(--gray-800)}
-    .items-header{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;font-size:12px;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.04em;padding:6px 0;border-bottom:1px solid var(--gray-200)}
-    .item-row{display:grid;grid-template-columns:1fr 60px 80px 90px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--gray-100)}
-    .item-row:last-child{border-bottom:none}
-    .item-name{font-weight:600;color:var(--gray-800)}
-    .item-qty,.item-unit,.item-total{text-align:right;font-weight:700}
-    .item-unit{color:var(--gray-500);font-weight:600}
-    .promo-rows{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-    .promo-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--success);font-weight:700}
-    .totals{display:flex;flex-direction:column;gap:8px}
-    .total-row{display:flex;justify-content:space-between;gap:8px;font-size:14px}
-    .total-row .label{color:var(--gray-500)}
-    .total-row.discount{color:var(--success);font-weight:700}
-    .total-row.final{font-size:18px;font-weight:800;color:var(--gray-900)}
     .actions{display:flex;flex-direction:column;gap:10px;margin-top:16px}
     .btn{width:100%;height:52px;border-radius:var(--radius);border:1px solid var(--gray-200);background:var(--warm-white);color:var(--gray-800);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;transition:background var(--transition),box-shadow var(--transition)}
     .btn.primary{background:var(--primary);color:#fff;border:none;box-shadow:var(--shadow-sm)}
@@ -57,14 +60,9 @@
     .rating-comment:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(196,93,53,0.12)}
     .rating-message{font-size:13px;color:var(--gray-500)}
     .rating-actions{margin-top:8px}
+    .payment-slip-img{width:100%;border-radius:12px;border:1px solid var(--gray-200);display:block;object-fit:cover}
     @media (max-width:520px){
-      .summary-grid{grid-template-columns:1fr}
-      .items-header{display:none}
-      .item-row{grid-template-columns:1fr auto;grid-template-areas:"name total" "qty unit";gap:6px}
-      .item-name{grid-area:name}
-      .item-total{grid-area:total}
-      .item-qty{grid-area:qty;text-align:left;font-weight:600}
-      .item-unit{grid-area:unit;text-align:right}
+      .summary-row{grid-template-columns:1fr}
       .secondary-actions{grid-template-columns:1fr}
     }
     @media print{
@@ -77,74 +75,43 @@
 </head>
 <body>
   <main class="page">
-    <section class="confirm-header">
-      <div class="success-icon">✓</div>
-      <div class="confirm-title">Order Confirmed</div>
-      <div class="confirm-text">Thank you! Your order has been placed successfully.</div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">Order summary</div>
-      <div class="summary-grid">
+    <section class="tracking-card">
+      <div class="tracking-header">
+        <div class="tracking-title">Order Tracking</div>
+        <div class="tracking-id" id="orderId">Order #BF-—</div>
+      </div>
+      <div class="divider"></div>
+      <div class="status-block">
+        <div class="status-badge" id="statusBadge">✅ Confirmed</div>
+        <div class="status-text" id="statusText">Your order has been confirmed</div>
+      </div>
+      <div class="section">
+        <div class="section-label">Items</div>
+        <div id="itemsList" class="items-list"></div>
+      </div>
+      <div class="summary-row">
         <div class="summary-item">
-          <div class="summary-label">Order ID</div>
-          <div class="summary-value" id="orderId">—</div>
+          <div class="summary-label">Total</div>
+          <div class="summary-value" id="finalTotal">—</div>
         </div>
         <div class="summary-item">
-          <div class="summary-label">Order date</div>
-          <div class="summary-value" id="orderDate">—</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">Delivery method</div>
+          <div class="summary-label">Type</div>
           <div class="summary-value" id="deliveryMethod">—</div>
         </div>
-        <div class="summary-item">
-          <div class="summary-label">Payment status</div>
-          <div class="summary-value" id="paymentStatus">Pay on delivery</div>
-        </div>
+      </div>
+      <div class="section">
+        <div class="section-label">Progress</div>
+        <div id="progressSteps" class="progress-steps"></div>
+      </div>
+      <div class="section">
+        <div class="section-label">Deliver to</div>
+        <div class="address-text" id="deliveryAddress">—</div>
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-title">Itemized list</div>
-      <div class="items-header">
-        <div>Item</div>
-        <div style="text-align:right;">Qty</div>
-        <div style="text-align:right;">Price</div>
-        <div style="text-align:right;">Total</div>
-      </div>
-      <div id="items"></div>
-      <div id="promoRows" class="promo-rows"></div>
-    </section>
-
-    <section class="card">
-      <div class="card-title">Price breakdown</div>
-      <div class="totals">
-        <div class="total-row">
-          <span class="label">Subtotal</span>
-          <span id="subtotal">—</span>
-        </div>
-        <div class="total-row discount" id="discountRow" style="display:none;">
-          <span>Discounts</span>
-          <span id="discount">—</span>
-        </div>
-        <div class="total-row" id="deliveryFeeRow" style="display:none;">
-          <span class="label">Delivery fee</span>
-          <span id="deliveryFee">—</span>
-        </div>
-        <div class="total-row final">
-          <span>Total</span>
-          <span id="finalTotal">—</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="card" id="ratingCard" style="display:none;">
-      <div class="card-title">Rate your items</div>
-      <div class="rating-content" id="ratingContent"></div>
-      <div class="rating-actions">
-        <button class="btn primary" id="submitRatingBtn" type="button">Submit Ratings</button>
-      </div>
+    <section class="card" id="paymentSlipCard" style="display:none;">
+      <div class="card-title">Payment slip</div>
+      <img id="paymentSlipImg" class="payment-slip-img" alt="Payment slip" />
     </section>
 
     <section class="actions">
@@ -173,9 +140,20 @@
     if (tok) returnParams.set('t', tok);
     const returnUrl = '/order-form.html' + (returnParams.toString() ? `?${returnParams.toString()}` : '');
     const userId = resolvedUserId || 'guest';
-    document.getElementById('orderId').textContent = orderIdDisplay;
+    document.getElementById('orderId').textContent = orderId !== '—' ? `Order #BF-${orderId}` : 'Order #BF-—';
     document.getElementById('backHomeBtn').setAttribute('href', returnUrl);
     const goBackToOrderForm = () => { window.location.href = returnUrl; };
+
+    const toNumber = (value) => {
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const cleaned = value.replace(/[^0-9.-]/g, '');
+        const parsed = Number(cleaned);
+        return Number.isFinite(parsed) ? parsed : NaN;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : NaN;
+    };
 
     const pdfEscape = (value) => String(value ?? '')
       .replace(/[^\x20-\x7E]/g, '?')
@@ -185,7 +163,7 @@
 
     const buildInvoiceLines = (d) => {
       const money = (v) => {
-        const n = Number(v);
+        const n = toNumber(v);
         return Number.isFinite(n) ? `$${n.toFixed(2)}` : '—';
       };
       const dt = new Date(d.created_at || Date.now());
@@ -202,9 +180,9 @@
       lines.push('Items:');
       (d.items || []).forEach((it) => {
         const name = it.name || it.product || '—';
-        const qty = Number(it.qty || it.quantity || 0);
-        const unit = Number(it.price ?? it.unit_price ?? 0);
-        const lineTotal = Number(it.line_total ?? it.total ?? (Number.isFinite(unit) ? unit * qty : NaN));
+        const qty = toNumber(it.qty || it.quantity || 0);
+        const unit = toNumber(it.price ?? it.unit_price ?? 0);
+        const lineTotal = toNumber(it.line_total ?? it.total ?? (Number.isFinite(unit) ? unit * qty : NaN));
         lines.push(`- ${name} x${qty || 0}  ${money(lineTotal)}`);
       });
       lines.push('');
@@ -371,169 +349,97 @@
 
     function renderDetails(d){
       window.__bfInvoiceData = d;
+      const slipUrl = d.payment_proof_url || d.proof_url || d.payment_proof || d.paymentSlip || '';
       const formatMoney = (value) => {
-        const num = Number(value);
+        const num = toNumber(value);
         return Number.isFinite(num) ? `$${num.toFixed(2)}` : '—';
       };
-      const dt = new Date(d.created_at || Date.now());
-      document.getElementById('orderDate').textContent = dt.toLocaleString();
       const deliveryValue = d.delivery_type || (String(d.address || '').toLowerCase().includes('pickup') ? 'Pick Up' : 'Delivery');
-      document.getElementById('deliveryMethod').textContent = deliveryValue;
-      document.getElementById('paymentStatus').textContent = d.payment_status || 'Pay on delivery';
-      const itemsWrap = document.getElementById('items');
+      const deliveryEl = document.getElementById('deliveryMethod');
+      if (deliveryEl) deliveryEl.textContent = deliveryValue;
+      const addressEl = document.getElementById('deliveryAddress');
+      if (addressEl) addressEl.textContent = d.address || (deliveryValue === 'Pick Up' ? 'Pickup at store' : '—');
+
+      const statusValue = String(d.status || '').trim().toLowerCase();
+      const statusMap = {
+        pending: { label: 'Pending', emoji: '🟡', text: 'Your order is pending confirmation.' },
+        scheduled: { label: 'Scheduled', emoji: '📅', text: 'Your order is scheduled.' },
+        confirmed: { label: 'Confirmed', emoji: '✅', text: 'Your order has been confirmed.' },
+        preparing: { label: 'Preparing', emoji: '🧁', text: 'We are preparing your order.' },
+        ready: { label: 'Ready', emoji: '📦', text: 'Your order is ready for pickup.' },
+        delivering: { label: 'Out for delivery', emoji: '🚚', text: 'Your order is on the way.' },
+        delivered: { label: 'Delivered', emoji: '📦', text: 'Your order has been delivered.' },
+        completed: { label: 'Delivered', emoji: '📦', text: 'Your order has been delivered.' },
+        cancelled: { label: 'Cancelled', emoji: '⚪', text: 'This order was cancelled.' },
+        canceled: { label: 'Cancelled', emoji: '⚪', text: 'This order was cancelled.' }
+      };
+      const statusInfo = statusMap[statusValue] || statusMap.confirmed;
+      const badgeEl = document.getElementById('statusBadge');
+      if (badgeEl) badgeEl.textContent = `${statusInfo.emoji} ${statusInfo.label}`;
+      const statusTextEl = document.getElementById('statusText');
+      if (statusTextEl) statusTextEl.textContent = statusInfo.text;
+
+      const itemsWrap = document.getElementById('itemsList');
       const rows = (d.items || []).map(it => {
-        const qty = Number(it.qty || it.quantity || 0);
-        const unit = Number(it.price ?? it.unit_price ?? 0);
-        const lineTotal = Number(it.line_total ?? it.total ?? (Number.isFinite(unit) ? unit * qty : NaN));
-        return `
-          <div class="item-row">
-            <div class="item-name">${it.name || it.product || '—'}</div>
-            <div class="item-qty">${qty || '—'}</div>
-            <div class="item-unit">${formatMoney(unit)}</div>
-            <div class="item-total">${formatMoney(lineTotal)}</div>
-          </div>
-        `;
+        const qty = toNumber(it.qty || it.quantity || 0);
+        const qtyLabel = Number.isFinite(qty) && qty > 0 ? ` × ${qty}` : '';
+        const name = it.name || it.product || '—';
+        return `<div class="item-line">• ${name}${qtyLabel}</div>`;
       }).join('');
-      itemsWrap.innerHTML = rows || '<div class="muted">No items found.</div>';
+      if (itemsWrap) itemsWrap.innerHTML = rows || '<div class="muted">No items found.</div>';
 
-      const promoRowsEl = document.getElementById('promoRows');
-      const promos = Array.isArray(d.promotions) ? d.promotions
-        : Array.isArray(d.applied_promotions) ? d.applied_promotions
-        : Array.isArray(d.appliedPromotions) ? d.appliedPromotions
-        : [];
-      promoRowsEl.innerHTML = promos.map(p => {
-        const label = typeof p === 'string' ? p : (p.label || p.name || 'Promotion');
-        const amount = typeof p === 'object' && p !== null ? p.amount : null;
-        return `
-          <div class="promo-row">
-            <span>${label}</span>
-            <span>${amount !== null ? `- ${formatMoney(amount)}` : ''}</span>
-          </div>
-        `;
-      }).join('');
+      const total = toNumber(d.total ?? d.total_amount);
+      const totalEl = document.getElementById('finalTotal');
+      if (totalEl) totalEl.textContent = formatMoney(total);
 
-      const subtotal = Number(d.subtotal);
-      const discount = Number(d.discount);
-      const deliveryFee = Number(d.delivery_fee ?? d.deliveryFee);
-      const total = Number(d.total ?? d.total_amount);
-
-      document.getElementById('subtotal').textContent = formatMoney(subtotal);
-      if (Number.isFinite(discount) && discount > 0) {
-        document.getElementById('discountRow').style.display = 'flex';
-        document.getElementById('discount').textContent = `- ${formatMoney(discount)}`;
-      }
-      if (Number.isFinite(deliveryFee) && deliveryFee > 0) {
-        document.getElementById('deliveryFeeRow').style.display = 'flex';
-        document.getElementById('deliveryFee').textContent = formatMoney(deliveryFee);
-      }
-      document.getElementById('finalTotal').textContent = formatMoney(total);
-    }
-
-    async function loadRating(){
-      const ratingCard = document.getElementById('ratingCard');
-      const ratingContent = document.getElementById('ratingContent');
-      const submitBtn = document.getElementById('submitRatingBtn');
-      if (!orderId || orderId === '—') return;
-      const params = new URLSearchParams();
-      if (tok) params.set('t', tok);
-      if (userId && userId !== 'guest') params.set('user_id', userId);
-      if (!params.toString()) return;
-      try {
-        const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/rating-status?${params.toString()}`);
-        const data = await res.json();
-        if (!res.ok) return;
-        ratingCard.style.display = 'block';
-        if (!data.can_rate) {
-          ratingContent.innerHTML = `<div class="rating-message">Ratings open after delivery.</div>`;
-          submitBtn.style.display = 'none';
-          return;
-        }
-        const unrated = Array.isArray(data.unrated_items) ? data.unrated_items : [];
-        if (unrated.length === 0) {
-          ratingContent.innerHTML = `<div class="rating-message">Thanks! You already rated this order.</div>`;
-          submitBtn.style.display = 'none';
-          return;
-        }
-        const ratings = {};
-        ratingContent.innerHTML = unrated.map(item => {
-          ratings[item.product_id] = { stars: 0, comment: '' };
-          const price = Number(item.price);
+      const progressMap = {
+        pending: 0,
+        scheduled: 0,
+        confirmed: 1,
+        preparing: 2,
+        ready: 3,
+        delivering: 3,
+        delivered: 4,
+        completed: 4
+      };
+      const isDelivery = String(d.delivery_type || '').toLowerCase() === 'delivery';
+      const firstLabel = statusValue === 'scheduled' ? 'Scheduled' : 'Pending';
+      const steps = isDelivery ? [
+        { key: 'pending', label: firstLabel },
+        { key: 'confirmed', label: 'Confirmed' },
+        { key: 'preparing', label: 'Preparing' },
+        { key: 'delivering', label: 'Out for delivery' },
+        { key: 'delivered', label: 'Delivered' }
+      ] : [
+        { key: 'pending', label: firstLabel },
+        { key: 'confirmed', label: 'Confirmed' },
+        { key: 'preparing', label: 'Preparing' },
+        { key: 'ready', label: 'Ready for pickup' },
+        { key: 'delivered', label: 'Picked up' }
+      ];
+      const currentIndex = Number.isFinite(progressMap[statusValue]) ? progressMap[statusValue] : 0;
+      const progressEl = document.getElementById('progressSteps');
+      if (progressEl) {
+        progressEl.innerHTML = steps.map((step, index) => {
+          const state = index < currentIndex ? 'completed' : index === currentIndex ? 'active' : '';
           return `
-            <div class="rating-item" data-product-id="${item.product_id}">
-              <div class="rating-item-header">
-                <img class="rating-img" src="${item.image_url || '/images/placeholder.png'}" alt="">
-                <div>
-                  <div class="rating-item-name">${item.name || 'Item'}</div>
-                  <div class="muted">${Number.isFinite(price) ? `$${price.toFixed(2)}` : ''}</div>
-                </div>
-              </div>
-              <div class="rating-stars" data-product-id="${item.product_id}">
-                <button type="button" class="star-btn" data-star="1">⭐ 1</button>
-                <button type="button" class="star-btn" data-star="2">⭐ 2</button>
-                <button type="button" class="star-btn" data-star="3">⭐ 3</button>
-                <button type="button" class="star-btn" data-star="4">⭐ 4</button>
-                <button type="button" class="star-btn" data-star="5">⭐ 5</button>
-              </div>
-              <textarea class="rating-comment" placeholder="Optional comment"></textarea>
+            <div class="progress-step ${state}">
+              <span class="dot"></span>
+              <span>${step.label}</span>
             </div>
           `;
         }).join('');
-        ratingContent.querySelectorAll('.rating-stars').forEach(group => {
-          group.addEventListener('click', (e) => {
-            const btn = e.target.closest('.star-btn');
-            if (!btn) return;
-            const stars = Number(btn.getAttribute('data-star')) || 0;
-            const pid = Number(group.getAttribute('data-product-id'));
-            if (!ratings[pid]) return;
-            ratings[pid].stars = stars;
-            group.querySelectorAll('.star-btn').forEach(b => {
-              const s = Number(b.getAttribute('data-star')) || 0;
-              b.classList.toggle('active', s <= stars);
-            });
-          });
-        });
-        ratingContent.querySelectorAll('.rating-item').forEach(itemEl => {
-          const pid = Number(itemEl.getAttribute('data-product-id'));
-          const textarea = itemEl.querySelector('.rating-comment');
-          if (!textarea || !ratings[pid]) return;
-          textarea.addEventListener('input', (e) => {
-            ratings[pid].comment = e.target.value || '';
-          });
-        });
-        submitBtn.style.display = 'inline-flex';
-        submitBtn.onclick = async () => {
-          const payloadRatings = Object.keys(ratings).map(key => {
-            const pid = Number(key);
-            return { product_id: pid, stars: ratings[pid].stars || 0, comment: ratings[pid].comment || '' };
-          });
-          const missing = payloadRatings.some(r => !r.stars);
-          if (missing) {
-            alert('Please rate all items before submitting.');
-            return;
-          }
-          submitBtn.disabled = true;
-          submitBtn.textContent = 'Submitting...';
-          try {
-            const res = await fetch(`/api/ratings/bulk?${params.toString()}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ order_id: Number(orderId), ratings: payloadRatings })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Failed to submit ratings');
-            ratingContent.innerHTML = `<div class="rating-message">Thanks for your feedback!</div>`;
-            submitBtn.style.display = 'none';
-          } catch (e) {
-            alert(e.message || 'Failed to submit ratings');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit Ratings';
-          }
-        };
-      } catch (e) {}
+      }
+
+      if (slipUrl) {
+        const slipCard = document.getElementById('paymentSlipCard');
+        const slipImg = document.getElementById('paymentSlipImg');
+        slipImg.src = slipUrl;
+        slipCard.style.display = 'block';
+      }
     }
 
     loadDetails();
-    loadRating();
   </script>
 </body>
 </html>

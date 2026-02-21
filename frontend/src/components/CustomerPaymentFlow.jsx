@@ -10,6 +10,7 @@ export default function CustomerPaymentFlow({ order }) {
     const [preview, setPreview] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
     const fileInputRef = useRef(null);
+    const messengerCloseTimeoutRef = useRef(null);
 
     // Check existing payment status on mount
     useEffect(() => {
@@ -47,6 +48,27 @@ export default function CustomerPaymentFlow({ order }) {
             interval = setInterval(checkStatus, 5000);
         }
         return () => clearInterval(interval);
+    }, [status]);
+
+    useEffect(() => {
+        if (status !== 'confirmed') return;
+        if (typeof window === 'undefined') return;
+        const hasMessengerClose = window.MessengerExtensions && typeof window.MessengerExtensions.requestCloseBrowser === 'function';
+        if (!hasMessengerClose) return;
+        if (messengerCloseTimeoutRef.current) {
+            clearTimeout(messengerCloseTimeoutRef.current);
+        }
+        messengerCloseTimeoutRef.current = setTimeout(() => {
+            window.MessengerExtensions.requestCloseBrowser(
+                () => {},
+                () => {}
+            );
+        }, 1500);
+        return () => {
+            if (messengerCloseTimeoutRef.current) {
+                clearTimeout(messengerCloseTimeoutRef.current);
+            }
+        };
     }, [status]);
 
     const checkStatus = async () => {
@@ -129,6 +151,22 @@ export default function CustomerPaymentFlow({ order }) {
         setSelectedFile(null);
         setError(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const returnToMessenger = () => {
+        if (typeof window === 'undefined') return;
+        if (window.MessengerExtensions && typeof window.MessengerExtensions.requestCloseBrowser === 'function') {
+            window.MessengerExtensions.requestCloseBrowser(
+                () => {},
+                () => {}
+            );
+            return;
+        }
+        if (document.referrer) {
+            window.location.href = document.referrer;
+            return;
+        }
+        window.location.href = 'https://m.me/';
     };
 
     // ── Pending State ──
@@ -559,6 +597,22 @@ export default function CustomerPaymentFlow({ order }) {
                             You will receive updates about your order via Messenger
                         </span>
                     </div>
+                    <button
+                        onClick={returnToMessenger}
+                        style={{
+                            padding: '12px 28px', borderRadius: '10px',
+                            background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
+                            color: '#fff', fontWeight: 600, fontSize: '14px',
+                            border: 'none', cursor: 'pointer',
+                            boxShadow: '0 4px 12px rgba(14,165,233,0.25)',
+                            transition: 'all 0.2s ease',
+                            width: '100%',
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+                        onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                    >
+                        Back to Messenger
+                    </button>
                 </div>
             </div>
         );
@@ -595,7 +649,7 @@ export default function CustomerPaymentFlow({ order }) {
                         fontSize: '14px', color: '#b91c1c', margin: 0,
                         lineHeight: 1.6,
                     }}>
-                        We couldn't verify your payment. Please try again with a clear screenshot.
+                        We could not verify your payment. Please try again with a clear screenshot.
                     </p>
                 </div>
 

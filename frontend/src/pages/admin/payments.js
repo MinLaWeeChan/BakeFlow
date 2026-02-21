@@ -7,6 +7,11 @@ export default function AdminPayments() {
     const [payments, setPayments] = useState([]);
     const [filter, setFilter] = useState('pending'); // pending, verified, rejected
     const [loading, setLoading] = useState(true);
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [confirmStatus, setConfirmStatus] = useState('');
+    const [confirmPaymentId, setConfirmPaymentId] = useState(null);
+    const [confirmOrderId, setConfirmOrderId] = useState(null);
+    const [isVerifying, setIsVerifying] = useState(false);
 
     useEffect(() => {
         fetchPayments();
@@ -25,23 +30,41 @@ export default function AdminPayments() {
         }
     };
 
-    const handleVerify = async (id, status) => {
-        if (!confirm(`Are you sure you want to mark this as ${status}?`)) return;
+    const openConfirm = (paymentId, orderId, status) => {
+        setConfirmPaymentId(paymentId);
+        setConfirmOrderId(orderId);
+        setConfirmStatus(status);
+        setConfirmOpen(true);
+    };
+
+    const closeConfirm = () => {
+        if (isVerifying) return;
+        setConfirmOpen(false);
+        setConfirmPaymentId(null);
+        setConfirmOrderId(null);
+        setConfirmStatus('');
+    };
+
+    const handleVerify = async () => {
+        if (!confirmPaymentId || !confirmStatus) return;
+        setIsVerifying(true);
 
         try {
-            const res = await fetch(`/api/admin/payments/${id}/verify`, {
+            const res = await fetch(`/api/admin/payments/${confirmPaymentId}/verify`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status }),
+                body: JSON.stringify({ status: confirmStatus }),
             });
             if (res.ok) {
-                // Refresh list
                 fetchPayments();
+                closeConfirm();
             } else {
                 alert("Failed to update status");
             }
         } catch (error) {
             alert("Error updating status");
+        } finally {
+            setIsVerifying(false);
         }
     };
 
@@ -127,13 +150,13 @@ export default function AdminPayments() {
                                                     <div className="d-flex gap-2 mt-3">
                                                         <button
                                                             className="btn btn-success flex-grow-1"
-                                                            onClick={() => handleVerify(payment.id, 'verified')}
+                                                            onClick={() => openConfirm(payment.id, payment.order_id, 'verified')}
                                                         >
                                                             <i className="bi bi-check-circle me-1"></i> Approve
                                                         </button>
                                                         <button
                                                             className="btn btn-outline-danger flex-grow-1"
-                                                            onClick={() => handleVerify(payment.id, 'rejected')}
+                                                            onClick={() => openConfirm(payment.id, payment.order_id, 'rejected')}
                                                         >
                                                             <i className="bi bi-x-circle me-1"></i> Reject
                                                         </button>
@@ -148,6 +171,30 @@ export default function AdminPayments() {
                     )}
                 </div>
             </main>
+            <div className={`modal fade ${confirmOpen ? 'show' : ''}`} style={{ display: confirmOpen ? 'block' : 'none' }} tabIndex="-1" role="dialog" aria-hidden={!confirmOpen}>
+                <div className="modal-dialog modal-dialog-centered" role="document">
+                    <div className="modal-content">
+                        <div className="modal-header">
+                            <h5 className="modal-title">Confirm Payment Update</h5>
+                            <button type="button" className="btn-close" onClick={closeConfirm} aria-label="Close" disabled={isVerifying}></button>
+                        </div>
+                        <div className="modal-body">
+                            {confirmOrderId ? (
+                                <span>Mark Order #{confirmOrderId} as {confirmStatus}?</span>
+                            ) : (
+                                <span>Mark this payment as {confirmStatus}?</span>
+                            )}
+                        </div>
+                        <div className="modal-footer">
+                            <button type="button" className="btn btn-outline-secondary" onClick={closeConfirm} disabled={isVerifying}>Cancel</button>
+                            <button type="button" className={`btn ${confirmStatus === 'verified' ? 'btn-success' : 'btn-danger'}`} onClick={handleVerify} disabled={isVerifying}>
+                                {isVerifying ? 'Updating...' : 'Confirm'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {confirmOpen && <div className="modal-backdrop fade show"></div>}
         </div>
     );
 }

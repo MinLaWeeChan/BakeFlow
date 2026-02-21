@@ -765,23 +765,5 @@ function completeOrderSubmission(data, phone) {
         console.log('Failed to store invoice', e);
     }
 
-    // Build receipt URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const userId = urlParams.get('user_id') || 'guest';
-    const dlvType = data.delivery_type || '';
-    const params = new URLSearchParams();
-    if (orderId != null) params.set('order_id', orderId);
-    if (userId) params.set('user_id', userId);
-    params.set('delivery_type', dlvType === 'pickup' ? 'Pick Up' : 'Delivery');
-    if (data.customer_name) params.set('customer_name', data.customer_name);
-    if (phone) params.set('customer_phone', phone);
-    if (data.address) params.set('address', dlvType === 'delivery' ? data.address : 'Pickup at store');
-    if (data.subtotal != null) params.set('subtotal', data.subtotal);
-    if (data.discount != null) params.set('discount', data.discount);
-    if (data.delivery_fee != null) params.set('delivery_fee', data.delivery_fee);
-    if (data.total != null) params.set('total', data.total);
-    if (data.total_amount != null) params.set('total_amount', data.total_amount);
-
-    // Redirect to receipt page
-    window.location.href = `/order-details.html?${params.toString()}`;
+    window.location.href = `/order/${orderId}`;
 }

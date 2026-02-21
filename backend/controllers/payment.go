@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bakeflow/configs"
+	"bakeflow/models"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	cloudinary "github.com/cloudinary/cloudinary-go/v2"
@@ -119,11 +121,23 @@ func UploadPaymentImageHandler(w http.ResponseWriter, r *http.Request) {
 
 	proofURL := res.SecureURL
 
+	var orderTotal sql.NullFloat64
+	if err := configs.DB.QueryRow("SELECT COALESCE(total_amount, 0) FROM orders WHERE id = $1", orderID).Scan(&orderTotal); err != nil {
+		log.Printf("⚠️ Failed to fetch order total: %v", err)
+		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	amount := 0.0
+	if orderTotal.Valid {
+		amount = orderTotal.Float64
+	}
+
 	// Save payment record to DB
 	_, err = configs.DB.Exec(`
         INSERT INTO payments (order_id, user_id, amount, method, status, proof_url, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW())
-    `, orderID, r.FormValue("user_id"), 0, "manual_upload", "pending", proofURL)
+    `, orderID, r.FormValue("user_id"), amount, "manual_upload", "pending", proofURL)
 
 	if err != nil {
 		log.Printf("⚠️ Failed to insert payment record: %v", err)
@@ -174,7 +188,7 @@ func AdminGetPayments(w http.ResponseWriter, r *http.Request) {
 	var args []interface{}
 
 	if status != "" {
-		query += " WHERE status = $1"
+		query += " WHERE (status::text = $1 OR status::text = '{' || $1 || '}')"
 		args = append(args, status)
 	}
 
@@ -289,14 +303,58 @@ func AdminVerifyPayment(w http.ResponseWriter, r *http.Request) {
 
 	// Post-commit notifications (best effort)
 	if req.Status == "verified" {
-		// Fetch payment details to notify user
 		var userID string
 		var orderID int
-		configs.DB.QueryRow("SELECT user_id, order_id FROM payments WHERE id = $1", paymentID).Scan(&userID, &orderID)
+		var paymentMethod sql.NullString
+		configs.DB.QueryRow("SELECT user_id, order_id, method FROM payments WHERE id = $1", paymentID).Scan(&userID, &orderID, &paymentMethod)
 
-		if userID != "" {
-			msg := fmt.Sprintf("✅ **Payment Verified!**\n\nYour payment for Order #%d has been confirmed. We are preparing your order now! 🍰", orderID)
-			SendMessageWithTag(userID, msg, "POST_PURCHASE_UPDATE")
+		if orderID > 0 {
+			order, err := models.GetOrderByID(orderID)
+			if err == nil {
+				recipientID := userID
+				if strings.TrimSpace(recipientID) == "" {
+					recipientID = order.SenderID
+				}
+				if strings.TrimSpace(recipientID) != "" {
+					customerName := strings.TrimSpace(order.CustomerName)
+					if customerName == "" {
+						customerName = "Customer"
+					}
+					items := make([]ReceiptElement, 0, len(order.Items))
+					for _, item := range order.Items {
+						element := ReceiptElement{
+							Title:    item.Product,
+							Quantity: item.Quantity,
+							Price:    item.Price,
+							Currency: "USD",
+						}
+						if strings.TrimSpace(item.Note) != "" {
+							element.Subtitle = item.Note
+						}
+						if strings.TrimSpace(item.ImageURL) != "" {
+							element.ImageURL = strings.TrimSpace(item.ImageURL)
+						}
+						items = append(items, element)
+					}
+					summary := ReceiptSummary{
+						Subtotal:     order.Subtotal,
+						ShippingCost: order.DeliveryFee,
+						TotalTax:     0,
+						TotalCost:    order.TotalAmount,
+					}
+					orderURL := fmt.Sprintf("%s/order/%d", resolveFrontendBaseURL(), order.ID)
+					address := buildReceiptAddress(order.DeliveryType, order.Address)
+					receiptMethod := buildReceiptPaymentMethod(paymentMethod)
+					if err := SendReceiptTemplate(recipientID, order.ID, customerName, items, address, summary, orderURL, receiptMethod); err != nil {
+						log.Printf("❌ Failed to send receipt template: %v", err)
+						msg := fmt.Sprintf("✅ **Payment Verified!**\n\nYour payment for Order #%d has been confirmed. We are preparing your order now! 🍰", orderID)
+						SendMessageWithTag(recipientID, msg, "POST_PURCHASE_UPDATE")
+					}
+				}
+			} else if userID != "" {
+				msg := fmt.Sprintf("✅ **Payment Verified!**\n\nYour payment for Order #%d has been confirmed. We are preparing your order now! 🍰", orderID)
+				SendMessageWithTag(userID, msg, "POST_PURCHASE_UPDATE")
+			}
 		}
 	} else if req.Status == "rejected" {
 		var userID string
@@ -314,4 +372,107 @@ func AdminVerifyPayment(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"message": "Payment status updated",
 	})
+}
+
+func buildReceiptPaymentMethod(method sql.NullString) string {
+	if !method.Valid {
+		return "Paid"
+	}
+	raw := strings.TrimSpace(strings.ToLower(method.String))
+	if raw == "" {
+		return "Paid"
+	}
+	switch raw {
+	case "manual_upload":
+		return "Paid via Transfer"
+	case "kpay":
+		return "Paid via KPay"
+	case "wave":
+		return "Paid via Wave"
+	default:
+		return "Paid"
+	}
+}
+
+func buildReceiptAddress(deliveryType, rawAddress string) *ReceiptAddress {
+	if strings.TrimSpace(strings.ToLower(deliveryType)) != "delivery" {
+		return nil
+	}
+	address := strings.TrimSpace(rawAddress)
+	if address == "" {
+		return nil
+	}
+	parts := strings.Split(address, ",")
+	segments := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			segments = append(segments, trimmed)
+		}
+	}
+	if len(segments) == 0 {
+		return nil
+	}
+	remaining := append([]string{}, segments...)
+	country := ""
+	if len(remaining) > 0 {
+		country = remaining[len(remaining)-1]
+		remaining = remaining[:len(remaining)-1]
+	}
+	postal := ""
+	if len(remaining) > 0 {
+		for i := len(remaining) - 1; i >= 0; i-- {
+			if isPostalCodePart(remaining[i]) {
+				postal = remaining[i]
+				remaining = append(remaining[:i], remaining[i+1:]...)
+				break
+			}
+		}
+	}
+	state := ""
+	if len(remaining) > 0 {
+		state = remaining[len(remaining)-1]
+		remaining = remaining[:len(remaining)-1]
+	}
+	city := ""
+	if len(remaining) > 0 {
+		city = remaining[len(remaining)-1]
+		remaining = remaining[:len(remaining)-1]
+	}
+	street1 := strings.TrimSpace(strings.Join(remaining, ", "))
+	if street1 == "" {
+		street1 = address
+	}
+	if city == "" {
+		city = state
+	}
+	if city == "" {
+		city = "Unknown"
+	}
+	if state == "" {
+		state = "Unknown"
+	}
+	if country == "" {
+		country = "Unknown"
+	}
+	return &ReceiptAddress{
+		Street1:    street1,
+		City:       city,
+		PostalCode: postal,
+		State:      state,
+		Country:    country,
+	}
+}
+
+func isPostalCodePart(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return len(value) >= 4 && len(value) <= 6
 }

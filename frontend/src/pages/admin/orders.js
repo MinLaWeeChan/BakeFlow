@@ -759,10 +759,16 @@ export default function OrdersPage() {
                       const relativeCreatedLabel = getRelativeTimeLabel(createdAtMs, now);
                       const lastItemMs = order.last_item_at ? new Date(order.last_item_at).getTime() : 0;
                       const hasItemUpdate = lastItemMs && createdAtMs && (lastItemMs - createdAtMs) > 120000;
+                      const lastActivityMs = lastItemMs > createdAtMs ? lastItemMs : createdAtMs;
+                      const lastActivityDate = lastActivityMs ? new Date(lastActivityMs) : null;
+                      const lastActivityLabel = lastActivityDate && !Number.isNaN(lastActivityDate.getTime())
+                        ? lastActivityDate.toLocaleString()
+                        : createdAtLabel;
+                      const lastActivityRelativeLabel = getRelativeTimeLabel(lastActivityMs, now);
                       const lastItemLabel = hasItemUpdate ? `Updated ${getRelativeTimeLabel(lastItemMs, now)}` : '';
                       const normalizedStatus = order.status === 'scheduled' ? 'pending' : order.status;
-                      const isOlderPending = normalizedStatus === 'pending' && createdAtMs && (now - createdAtMs) >= 86400000;
-                      const pendingAgeLabel = isOlderPending ? `${t('pending') || 'Pending'} • ${relativeCreatedLabel}` : '';
+                      const isOlderPending = normalizedStatus === 'pending' && lastActivityMs && (now - lastActivityMs) >= 86400000;
+                      const pendingAgeLabel = isOlderPending ? `${t('pending') || 'Pending'} • ${lastActivityRelativeLabel}` : '';
 
                       return (
                         <div key={order.id} className="col-12 col-xl-6">
@@ -779,7 +785,7 @@ export default function OrdersPage() {
                                         <i className="bi bi-calendar-event me-1"></i>
                                         Scheduled for: {new Date(order.scheduled_for).toLocaleString()}
                                       </div>
-                                      <small className="text-muted">Created {relativeCreatedLabel} • {createdAtLabel}</small>
+                                      <small className="text-muted">Updated {lastActivityRelativeLabel} • {lastActivityLabel}</small>
                                     </div>
                                   ) : (
                                     <small className="text-muted d-flex align-items-center gap-2">

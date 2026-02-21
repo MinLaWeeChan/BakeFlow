@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"bakeflow/models"
@@ -195,47 +196,29 @@ func showOrderTracking(userID string, orderID int) {
 		order = &orders[0]
 	}
 
-	statusInfo := map[string]struct {
-		emoji   string
-		message string
-	}{
-		"pending":    {"⏳", "Your order is being reviewed"},
-		"confirmed":  {"✅", "Your order has been confirmed"},
-		"preparing":  {"👨‍🍳", "Your order is being prepared"},
-		"ready":      {"📦", "Your order is ready for pickup or delivery"},
-		"delivering": {"🚗", "Your order is out for delivery"},
-		"delivered":  {"✅", "Your order has been delivered"},
-		"cancelled":  {"❌", "This order was cancelled"},
-		"scheduled":  {"📅", "Your order is scheduled"},
-	}
-
 	statusKey := strings.ToLower(strings.TrimSpace(order.Status))
-	info, ok := statusInfo[statusKey]
-	if !ok {
-		info = statusInfo["pending"]
+	if statusKey == "" {
 		statusKey = "pending"
 	}
 
-	// Build items list
-	itemsList := ""
-	for i, item := range order.Items {
-		if i >= 3 {
-			itemsList += fmt.Sprintf("  ...and %d more\n", len(order.Items)-3)
-			break
+	itemSummary := "No items"
+	if len(order.Items) > 0 {
+		first := order.Items[0]
+		itemSummary = fmt.Sprintf("%s × %d", first.Product, first.Quantity)
+		if len(order.Items) > 1 {
+			itemSummary = fmt.Sprintf("%s + %d more", itemSummary, len(order.Items)-1)
 		}
-		itemsList += fmt.Sprintf("  • %s × %d\n", item.Product, item.Quantity)
 	}
 
-	steps := []string{"pending", "preparing", "ready", "delivered"}
-	stepLabels := map[string]string{
+	progressLabels := map[string]string{
 		"pending":    "Pending",
+		"scheduled":  "Scheduled",
+		"confirmed":  "Confirmed",
 		"preparing":  "Preparing",
 		"ready":      "Ready",
-		"delivered":  "Delivered",
 		"delivering": "Out for delivery",
-	}
-	if order.DeliveryType == "delivery" {
-		steps = []string{"pending", "preparing", "delivering", "delivered"}
+		"delivered":  "Delivered",
+		"completed":  "Delivered",
 	}
 
 	stepStatus := "pending"
@@ -254,49 +237,43 @@ func showOrderTracking(userID string, orderID int) {
 		stepStatus = "delivered"
 	}
 
-	currentStepIndex := 0
-	for i, s := range steps {
-		if s == stepStatus {
-			currentStepIndex = i
-			break
+	statusLabel := progressLabels[statusKey]
+	if statusLabel == "" {
+		statusLabel = progressLabels[stepStatus]
+	}
+	typeLabel := strings.Title(strings.TrimSpace(order.DeliveryType))
+	if typeLabel == "" {
+		typeLabel = "Pickup"
+	}
+	title := fmt.Sprintf("Order #BF-%d", order.ID)
+	subtitle := fmt.Sprintf("%s • %s\n%s\nTotal: $%.2f\nProgress: %s", strings.Title(statusKey), typeLabel, itemSummary, order.TotalAmount, statusLabel)
+
+	productImage := "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=200&fit=crop"
+	if len(order.Items) > 0 && strings.TrimSpace(order.Items[0].ImageURL) != "" {
+		imgURL := strings.TrimSpace(order.Items[0].ImageURL)
+		if strings.HasPrefix(imgURL, "https://") {
+			productImage = imgURL
 		}
 	}
 
-	timelineLines := make([]string, 0, len(steps))
-	for i, s := range steps {
-		icon := "○"
-		if i < currentStepIndex {
-			icon = "✅"
-		} else if i == currentStepIndex {
-			icon = "🟡"
-		}
-		label := stepLabels[s]
-		timelineLines = append(timelineLines, fmt.Sprintf("%s %s", icon, label))
+	var buttons []Button
+	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("WEBVIEW_BASE_URL")), "/")
+	if baseURL != "" {
+		detailsURL := fmt.Sprintf("%s/order-details.html?order_id=%d", baseURL, order.ID)
+		buttons = append(buttons, Button{
+			Type:                "web_url",
+			Title:               "View Details",
+			URL:                 detailsURL,
+			WebviewHeightRatio:  "tall",
+			MessengerExtensions: true,
+		})
 	}
-	progress := strings.Join(timelineLines, "\n")
+	buttons = append(buttons, Button{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"})
 
-	msg := fmt.Sprintf("📍 *Order Tracking*\n\n"+
-		"Order #BF-%d\n"+
-		"━━━━━━━━━━━━━━━\n\n"+
-		"%s *%s*\n"+
-		"%s\n\n"+
-		"*Items:*\n%s\n"+
-		"*Total:* $%.2f\n"+
-		"*Type:* %s\n\n"+
-		"*Progress:*\n%s",
-		order.ID,
-		info.emoji, strings.Title(statusKey),
-		info.message,
-		itemsList,
-		order.TotalAmount,
-		strings.Title(order.DeliveryType),
-		progress)
-
-	if order.DeliveryType == "delivery" && order.Address != "" {
-		msg += fmt.Sprintf("\n*Deliver to:* %s", order.Address)
+	if err := SendOrderCard(userID, order.ID, title, subtitle, productImage, buttons); err != nil {
+		fallback := fmt.Sprintf("Order #BF-%d\n%s • %s\n%s\nTotal: $%.2f\nProgress: %s", order.ID, strings.Title(statusKey), typeLabel, itemSummary, order.TotalAmount, statusLabel)
+		SendMessage(userID, fallback)
 	}
-
-	SendMessage(userID, msg)
 }
 
 // Rating handling moved to `order_service.go`.

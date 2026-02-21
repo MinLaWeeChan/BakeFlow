@@ -194,7 +194,9 @@ function renderPreorderOptionChips(containerId, name, values) {
     container.innerHTML = '';
     list.forEach((value) => {
         const label = document.createElement('label');
-        label.className = 'preorder-option-chip';
+        label.className = name === 'preorderCream'
+            ? 'preorder-option-chip preorder-option-chip--nowrap'
+            : 'preorder-option-chip';
         const input = document.createElement('input');
         input.type = 'radio';
         input.name = name;
@@ -204,9 +206,9 @@ function renderPreorderOptionChips(containerId, name, values) {
             syncPreorderOptionChips(name);
             updatePreorderPriceSummary();
         });
+        label.appendChild(input);
         const span = document.createElement('span');
         span.textContent = value.replace(' inch', '"');
-        label.appendChild(input);
         label.appendChild(span);
         container.appendChild(label);
     });

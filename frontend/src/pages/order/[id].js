@@ -20,7 +20,39 @@ export default function OrderPage() {
                 return res.json();
             })
             .then((data) => {
-                setOrder(data);
+                const rawItems = Array.isArray(data.items) ? data.items : [];
+                const items = rawItems.map((item) => {
+                    const quantity = Number(item.quantity ?? item.qty ?? 0);
+                    const price = Number(item.price ?? item.unit_price ?? 0);
+                    const name = item.product || item.name || item.title || 'Item';
+                    return {
+                        ...item,
+                        quantity,
+                        price,
+                        product: name,
+                        name
+                    };
+                });
+                const itemsSubtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const rawSubtotal = Number(data.subtotal);
+                const rawDeliveryFee = Number(data.delivery_fee);
+                const rawDiscount = Number(data.discount);
+                const subtotal = Number.isFinite(rawSubtotal) && rawSubtotal > 0 ? rawSubtotal : itemsSubtotal;
+                const deliveryFee = Number.isFinite(rawDeliveryFee) ? rawDeliveryFee : 0;
+                const discount = Number.isFinite(rawDiscount) ? rawDiscount : 0;
+                const fieldTotal = subtotal + deliveryFee - discount;
+                const rawTotalAmount = Number(data.total_amount ?? data.total);
+                const totalAmount = Number.isFinite(rawTotalAmount) && rawTotalAmount > 0
+                    ? rawTotalAmount
+                    : (fieldTotal > 0 ? fieldTotal : itemsSubtotal);
+                setOrder({
+                    ...data,
+                    items,
+                    subtotal,
+                    delivery_fee: deliveryFee,
+                    discount,
+                    total_amount: totalAmount
+                });
                 setLoading(false);
             })
             .catch((err) => {
@@ -203,7 +235,7 @@ export default function OrderPage() {
                                 fontSize: '20px', fontWeight: 800, color: '#1f2937',
                                 letterSpacing: '-0.5px',
                             }}>
-                                ${order.total_amount?.toFixed(2)}
+                                ${Number(order.total_amount || 0).toFixed(2)}
                             </span>
                         </div>
                     </div>
@@ -229,7 +261,6 @@ export default function OrderPage() {
                     </div>
                 </div>
 
-                {/* Payment Flow */}
                 <CustomerPaymentFlow order={order} />
             </div>
         </div>

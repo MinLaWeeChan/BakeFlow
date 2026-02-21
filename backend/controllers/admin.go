@@ -1155,21 +1155,13 @@ func AdminCancelOrder(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Professional cancellation message with reason included
 			title := "Order cancelled"
-			subtitle := fmt.Sprintf("Order #BF-%d\n\nWe're sorry we couldn't complete your order.\nWe hope to serve you again soon.", order.ID)
-
-			// Include reason in the card if provided
+			subtitle := fmt.Sprintf("Order #BF-%d\nWe hope to serve you again soon.", order.ID)
 			if reason != "" {
-				subtitle = fmt.Sprintf("Order #BF-%d\n\nReason: %s\n\nWe hope to serve you again soon.", order.ID, reason)
+				subtitle = fmt.Sprintf("Order #BF-%d\nReason: %s\nWe hope to serve you again soon.", order.ID, reason)
 			}
 
-			buttons := []Button{
-				{Type: "postback", Title: "Order Again", Payload: "ORDER_NOW"},
-				{Type: "postback", Title: "Need Help?", Payload: "CONTACT_SUPPORT"},
-			}
-
-			err := SendOrderCard(order.SenderID, order.ID, title, subtitle, productImage, buttons)
+			err := SendOrderCard(order.SenderID, order.ID, title, subtitle, productImage, nil)
 			if err != nil {
 				log.Printf("[Notify] Card failed for order #%d: %v", order.ID, err)
 				fallbackMsg := fmt.Sprintf("Your order #BF-%d has been cancelled. We apologize for the inconvenience.", order.ID)

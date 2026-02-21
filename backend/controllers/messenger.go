@@ -46,18 +46,21 @@ type ReceiptAdjustment struct {
 }
 
 // SendReceiptTemplate sends a beautiful receipt card to user
-func SendReceiptTemplate(recipientID string, orderID int, customerName string, items []ReceiptElement, address *ReceiptAddress, summary ReceiptSummary, orderURL string) error {
+func SendReceiptTemplate(recipientID string, orderID int, customerName string, items []ReceiptElement, address *ReceiptAddress, summary ReceiptSummary, orderURL string, paymentMethod string) error {
 	pageAccessToken := os.Getenv("PAGE_ACCESS_TOKEN")
 	if pageAccessToken == "" {
 		return fmt.Errorf("PAGE_ACCESS_TOKEN not set in .env")
 	}
 
+	if strings.TrimSpace(paymentMethod) == "" {
+		paymentMethod = "Paid"
+	}
 	receiptPayload := map[string]interface{}{
 		"template_type":  "receipt",
 		"recipient_name": customerName,
 		"order_number":   fmt.Sprintf("BF-%d", orderID),
-		"currency":       "MMK",
-		"payment_method": "Cash on Delivery",
+		"currency":       "USD",
+		"payment_method": paymentMethod,
 		"timestamp":      time.Now().Unix(),
 		"elements":       items,
 		"summary":        summary,

@@ -140,6 +140,16 @@ func isCustomOrder(orderID int) bool {
 	return err == nil && count > 0
 }
 
+func hasPaidPayment(orderID int) bool {
+	var status string
+	err := configs.DB.QueryRow("SELECT status FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1", orderID).Scan(&status)
+	if err != nil {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	return normalized == "pending" || normalized == "verified" || normalized == "confirmed" || normalized == "paid"
+}
+
 // canCreateOrder validates if a user can place a new order (simple Food Panda-style rules)
 // Custom cake orders and regular orders are independent — they don't block each other.
 func canCreateOrder(userID string, orderType OrderType) (bool, string, []*models.Order) {
@@ -151,13 +161,16 @@ func canCreateOrder(userID string, orderType OrderType) (bool, string, []*models
 		// Rule: Only 1 custom cake order at a time (ignore regular orders)
 		for _, order := range existingOrders {
 			if isCustomOrder(order.ID) {
+				if hasPaidPayment(order.ID) {
+					continue
+				}
 				status := strings.ToLower(strings.TrimSpace(order.Status))
-				if status == "pending" || status == "scheduled" {
-					// Modifiable — let user choose to update or cancel
+				if status == "pending" || status == "scheduled" || status == "confirmed" {
+					// Modifiable — let user choose to add or start a new order
 					return false, "existing_custom_modifiable", []*models.Order{order}
 				}
 				// Not modifiable (preparing, ready, etc.)
-				return false, "You already have a custom cake order being prepared. Please wait until it completes.", nil
+				return false, "existing_custom_unmodifiable", []*models.Order{order}
 			}
 		}
 		return true, "", nil
@@ -177,6 +190,9 @@ func canCreateOrder(userID string, orderType OrderType) (bool, string, []*models
 		var modifiableOrders []*models.Order
 		for _, order := range existingOrders {
 			if isCustomOrder(order.ID) {
+				continue
+			}
+			if hasPaidPayment(order.ID) {
 				continue
 			}
 			status := strings.ToLower(strings.TrimSpace(order.Status))
@@ -268,23 +284,6 @@ func HandleOrderChoice(w http.ResponseWriter, r *http.Request) {
 	userID := psid
 
 	choice := strings.ToLower(strings.TrimSpace(req.Choice))
-	itemOrderType := getChoiceItemsOrderType(req.Items)
-
-	// Block creating new custom order if one already exists
-	if choice == "new_order" && itemOrderType == OrderTypeCustom {
-		canOrder, reason, _ := canCreateOrder(userID, OrderTypeCustom)
-		if !canOrder {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusConflict)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success":    false,
-				"error":      "custom_order_exists",
-				"message":    reason,
-				"order_type": string(OrderTypeCustom),
-			})
-			return
-		}
-	}
 
 	if choice == "add_to_existing" {
 		// Add items to existing order with smart merging
@@ -491,7 +490,18 @@ func cancelCustomOrder(w http.ResponseWriter, userID string, req OrderChoiceRequ
 		if !isValidMessengerRecipientID(userID) {
 			return
 		}
-		_ = SendMessage(userID, fmt.Sprintf("Your previous custom cake order #BF-%d has been cancelled. A new order has been created with your updated selections.", orderID))
+		productImage := "https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=200&fit=crop"
+		if len(existingOrder.Items) > 0 && strings.TrimSpace(existingOrder.Items[0].ImageURL) != "" {
+			imgURL := strings.TrimSpace(existingOrder.Items[0].ImageURL)
+			if strings.HasPrefix(imgURL, "https://") {
+				productImage = imgURL
+			}
+		}
+		title := "Order cancelled"
+		subtitle := fmt.Sprintf("Order #BF-%d\nWe hope to serve you again soon.", orderID)
+		if err := SendOrderCardWithTag(userID, orderID, title, subtitle, productImage, nil, "POST_PURCHASE_UPDATE"); err != nil {
+			_ = SendMessage(userID, fmt.Sprintf("Your previous custom cake order #BF-%d has been cancelled. A new order has been created with your updated selections.", orderID))
+		}
 	}()
 }
 
@@ -525,8 +535,8 @@ func addItemsToExistingOrder(w http.ResponseWriter, userID string, orderID int, 
 		})
 		return
 	}
-	// Allow adding to pending/preparing orders, and scheduled custom orders
-	allowModify := status == "pending" || status == "preparing"
+	// Allow adding to pending/confirmed orders, and scheduled custom orders
+	allowModify := status == "pending" || status == "confirmed"
 	if status == "scheduled" && isCustomOrder(orderID) {
 		allowModify = true
 	}
@@ -536,7 +546,7 @@ func addItemsToExistingOrder(w http.ResponseWriter, userID string, orderID int, 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success":    false,
 			"error":      "order_not_modifiable",
-			"message":    "Items can only be added while the order is pending or preparing.",
+			"message":    "Items can only be added before the order is preparing.",
 			"order_type": "regular",
 		})
 		return
@@ -819,10 +829,7 @@ func createNewOrderAfterChoice(w http.ResponseWriter, userID string, req OrderCh
 		}
 
 		// Combined confirmation card with all options
-		frontendURL := os.Getenv("FRONTEND_URL")
-		if frontendURL == "" {
-			frontendURL = "http://localhost:3000"
-		}
+		frontendURL := resolveFrontendBaseURL()
 
 		paymentLink := fmt.Sprintf("%s/order/%d", frontendURL, orderID)
 
@@ -1019,7 +1026,7 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 				json.NewEncoder(w).Encode(map[string]interface{}{
 					"success":  true,
 					"action":   "existing_custom_order",
-					"message":  fmt.Sprintf("You already have a custom cake order (#BF-%d). Would you like to update it or cancel and start fresh?", existingOrder.ID),
+					"message":  fmt.Sprintf("You already have a custom cake order (#BF-%d). Update it, add to it, or start a new one.", existingOrder.ID),
 					"order_id": existingOrder.ID,
 					"order": map[string]interface{}{
 						"id":     existingOrder.ID,
@@ -1029,6 +1036,37 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 					},
 					"newItems":   req.Items,
 					"order_type": string(orderTypeDetected),
+					"allow_new":  true,
+				})
+				return
+			}
+
+			if reason == "existing_custom_unmodifiable" && len(modifiableOrders) > 0 {
+				existingOrder := modifiableOrders[0]
+				status := strings.ToLower(strings.TrimSpace(existingOrder.Status))
+				allowAdd := status != "preparing"
+				message := fmt.Sprintf("You already have a custom cake order (#BF-%d). Select it to add items or create a new order.", existingOrder.ID)
+				if !allowAdd {
+					message = fmt.Sprintf("You already have a custom cake order (#BF-%d) preparing. You can create a new order.", existingOrder.ID)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"success":  true,
+					"action":   "existing_custom_order",
+					"message":  message,
+					"order_id": existingOrder.ID,
+					"order": map[string]interface{}{
+						"id":     existingOrder.ID,
+						"status": existingOrder.Status,
+						"items":  existingOrder.TotalItems,
+						"amount": existingOrder.TotalAmount,
+					},
+					"newItems":     req.Items,
+					"order_type":   string(orderTypeDetected),
+					"allow_update": false,
+					"allow_add":    allowAdd,
+					"allow_new":    true,
 				})
 				return
 			}
@@ -1258,6 +1296,7 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":    true,
 		"orderID":    orderID,
+		"order_id":   orderID,
 		"message":    fmt.Sprintf("Order #BF-%d placed successfully!", orderID),
 		"order_type": string(orderTypeDetected),
 		"type_label": getOrderTypeLabel(orderTypeDetected),
@@ -1325,10 +1364,7 @@ func CreateChatOrder(w http.ResponseWriter, r *http.Request) {
 		trackPayload := fmt.Sprintf("TRACK_ORDER_%d", orderID)
 		log.Printf("[Order] Creating card with Track payload: %s", trackPayload)
 
-		frontendURL := os.Getenv("FRONTEND_URL")
-		if frontendURL == "" {
-			frontendURL = "http://localhost:3000"
-		}
+		frontendURL := resolveFrontendBaseURL()
 
 		buttons := []Button{
 			{Type: "web_url", Title: "Pay Now", URL: fmt.Sprintf("%s/order/%d", frontendURL, orderID)},
@@ -1353,4 +1389,18 @@ func isValidMessengerRecipientID(value string) bool {
 	}
 	// Allow any non-empty ID for now to prevent silent failures during testing
 	return true
+}
+
+func resolveFrontendBaseURL() string {
+	baseURL := strings.TrimSpace(os.Getenv("WEBVIEW_BASE_URL"))
+	if baseURL == "" {
+		baseURL = strings.TrimSpace(os.Getenv("FRONTEND_URL"))
+	}
+	if baseURL == "" {
+		baseURL = "http://localhost:3000"
+	}
+	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		baseURL = "https://" + baseURL
+	}
+	return strings.TrimRight(baseURL, "/")
 }

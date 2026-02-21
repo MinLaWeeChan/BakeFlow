@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"bakeflow/configs"
 	"bakeflow/models"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 )
@@ -56,6 +59,7 @@ func GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"id":            order.ID,
 		"customer_name": order.CustomerName,
+		"sender_id":     order.SenderID,
 		"delivery_type": order.DeliveryType,
 		"address":       order.Address,
 		"status":        order.Status,
@@ -66,6 +70,13 @@ func GetOrderByID(w http.ResponseWriter, r *http.Request) {
 		"delivery_fee":  order.DeliveryFee,
 		"created_at":    order.CreatedAt,
 		"items":         items,
+	}
+	var proofURL sql.NullString
+	if err := configs.DB.QueryRow(`SELECT proof_url FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`, orderID).Scan(&proofURL); err == nil {
+		trimmed := strings.TrimSpace(proofURL.String)
+		if trimmed != "" {
+			response["payment_proof_url"] = trimmed
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
