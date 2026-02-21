@@ -1,0 +1,78 @@
+/**
+ * BakeFlow Design System - CSS Variables
+ * Warm, human-centered design tokens inspired by artisan bakeries
+ */
+
+:root {
+    /* ========== Warm Color Palette ========== */
+    /* Primary - Warm terracotta/rust tones */
+    --primary: #c45d35;
+    --primary-light: #fef7f4;
+    --primary-dark: #a84d2b;
+    --primary-hover: #b8522d;
+    
+    /* Accent - Soft sage green */
+    --accent: #7c9a82;
+    --accent-light: #f4f7f5;
+    
+    /* Success - Warm green */
+    --success: #5a8f5c;
+    --success-light: #f0f7f0;
+    
+    /* Warning - Golden amber */
+    --warning: #d4a853;
+    --warning-light: #fef9ee;
+    
+    /* ========== Neutral Palette - Warm grays ========== */
+    --cream: #fdfbf8;
+    --cream-dark: #f8f5f0;
+    --warm-white: #fffefa;
+    
+    --gray-50: #faf9f7;
+    --gray-100: #f5f3ef;
+    --gray-200: #e8e4dc;
+    --gray-300: #d4cfc4;
+    --gray-400: #a8a196;
+    --gray-500: #7d766b;
+    --gray-600: #5c564d;
+    --gray-700: #3d3832;
+    --gray-800: #2a2621;
+    --gray-900: #1a1714;
+    
+    /* ========== Typography ========== */
+    --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-display: 'DM Serif Display', Georgia, serif;
+    
+    /* ========== Spacing - Organic rhythm ========== */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+    
+    /* ========== Border Radius - Soft, intentional ========== */
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-full: 999px;
+    
+    /* ========== Shadows - Soft, realistic ========== */
+    --shadow-xs: 0 1px 2px rgba(26, 23, 20, 0.04);
+    --shadow-sm: 0 2px 4px rgba(26, 23, 20, 0.06);
+    --shadow: 0 4px 12px rgba(26, 23, 20, 0.08);
+    --shadow-md: 0 8px 24px rgba(26, 23, 20, 0.1);
+    --shadow-lg: 0 16px 40px rgba(26, 23, 20, 0.12);
+    --shadow-inner: inset 0 2px 4px rgba(26, 23, 20, 0.04);
+    
+    /* ========== Transitions ========== */
+    --transition-fast: 0.15s ease;
+    --transition: 0.2s ease;
+    --transition-slow: 0.3s ease;
+    
+    /* ========== Layout ========== */
+    --content-max-width: 520px;
+    --content-bottom-pad: 200px;
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}

@@ -1,0 +1,9 @@
+# Ignore environment files containing secrets
+/.env
+backend/.env
+
+# Node artifacts
+frontend/node_modules/
+
+# Editor folders
+.vscode/

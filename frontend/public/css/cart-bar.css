@@ -1,0 +1,318 @@
+/**
+ * BakeFlow - Cart Bar Component
+ * Sticky bottom bar for checkout
+ */
+
+/* ========== Cart Bar ========== */
+.cart-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: var(--space-md) var(--space-md) calc(var(--space-md) + var(--safe-area-bottom));
+    background: rgba(253, 251, 248, 0.95);
+    backdrop-filter: saturate(1.5) blur(16px);
+    -webkit-backdrop-filter: saturate(1.5) blur(16px);
+    border-top: 1px solid var(--gray-200);
+    z-index: 100;
+    box-shadow: 0 -4px 20px rgba(26, 23, 20, 0.08);
+}
+
+.bar-inner {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.cart-bar .preorder-ad {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 18px;
+}
+
+.cart-bar .preorder-ad-handle {
+    display: none;
+}
+
+.cart-bar .preorder-ad-close {
+    right: 10px;
+    top: 10px;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+}
+
+.cart-bar .preorder-ad-media {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+}
+
+.cart-bar .preorder-ad-title {
+    font-size: 14px;
+}
+
+.cart-bar .preorder-ad-subtitle {
+    font-size: 12px;
+}
+
+.cart-bar .preorder-ad-cta {
+    margin-top: 8px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+}
+
+/* ========== Main Row ========== */
+.bar-main {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.bar-summary {
+    flex: 1;
+    background: var(--gray-50);
+    border-radius: var(--radius);
+    padding: var(--space-sm) var(--space-md);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    border: none;
+    transition: all var(--transition-fast);
+}
+
+.bar-summary:hover {
+    background: var(--gray-50);
+}
+
+.bar-summary:active {
+    transform: none;
+}
+
+.bar-summary-left {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+}
+
+.bar-cart-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius);
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bar-cart-icon svg {
+    width: 20px;
+    height: 20px;
+    color: var(--primary);
+}
+
+.bar-items {
+    font-size: 13px;
+    color: var(--gray-600);
+}
+
+.bar-items strong {
+    color: var(--gray-800);
+    font-weight: 700;
+}
+
+.bar-total {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--gray-900);
+    letter-spacing: -0.02em;
+}
+
+.bar-summary-text {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.bar-subtotal-row,
+.bar-discount-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-500);
+}
+
+.bar-discount-row {
+    color: var(--success);
+}
+
+.bar-label {
+    font-weight: 600;
+    color: inherit;
+}
+
+.bar-total-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.bar-total-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-500);
+}
+
+/* ========== Primary Button ========== */
+.primary-btn {
+    height: 56px;
+    padding: 0 24px;
+    border-radius: var(--radius);
+    border: none;
+    background: var(--primary);
+    color: #fff;
+    font-weight: 800;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+    box-shadow: var(--shadow);
+}
+
+.primary-btn:hover:not(:disabled) {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+}
+
+.primary-btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
+}
+
+.primary-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.primary-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+/* ========== Secondary Buttons Row ========== */
+.secondary-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.secondary-btn {
+    height: 44px;
+    border-radius: var(--radius);
+    border: 1px solid var(--gray-200);
+    background: var(--warm-white);
+    color: var(--gray-700);
+    font-weight: 600;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.secondary-btn:hover {
+    background: var(--gray-50);
+    border-color: var(--gray-300);
+}
+
+.secondary-btn:active {
+    transform: scale(0.98);
+}
+
+.secondary-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.secondary-btn span {
+    display: none;
+}
+
+@media (min-width: 380px) {
+    .secondary-btn span {
+        display: inline;
+    }
+}
+
+@media (max-width: 520px) {
+    .bar-main {
+        flex-direction: column;
+    }
+
+    .primary-btn {
+        width: 100%;
+    }
+}
+
+/* ========== Order Bar (Checkout Step) ========== */
+.order-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--warm-white);
+    border-top: 1px solid var(--gray-200);
+    padding: var(--space-md) var(--space-md) calc(var(--space-md) + var(--safe-area-bottom));
+    display: none;
+    box-shadow: 0 -4px 20px rgba(26, 23, 20, 0.08);
+}
+
+.order-inner {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+}
+
+.place-btn {
+    width: 100%;
+    height: 56px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--success);
+    color: #fff;
+    font-weight: 800;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    box-shadow: var(--shadow-sm);
+}
+
+.place-btn:hover {
+    background: #4d7e4f;
+    transform: translateY(-1px);
+}
+
+.place-btn:active {
+    transform: translateY(0);
+}
+
+.place-btn svg {
+    width: 20px;
+    height: 20px;
+}

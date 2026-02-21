@@ -1,0 +1,104 @@
+/**
+ * BakeFlow - Base Styles
+ * Reset, typography, and foundational styles
+ */
+
+/* ========== Reset ========== */
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+body {
+    font-family: var(--font-family);
+    background: var(--cream);
+    min-height: 100vh;
+    padding: 0 0 var(--content-bottom-pad);
+    color: var(--gray-900);
+    line-height: 1.5;
+}
+
+/* ========== Container ========== */
+.container {
+    max-width: var(--content-max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-md);
+}
+
+/* ========== Typography ========== */
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--gray-900);
+}
+
+/* ========== Links ========== */
+a {
+    color: var(--primary);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+
+a:hover {
+    color: var(--primary-dark);
+}
+
+/* ========== Button Reset ========== */
+button {
+    font-family: inherit;
+    border: none;
+    background: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ========== Input Reset ========== */
+input, textarea, select {
+    font-family: inherit;
+    font-size: 16px; /* Prevents iOS zoom */
+}
+
+/* ========== Images ========== */
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* ========== Focus States ========== */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* ========== Selection ========== */
+::selection {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+}
+
+/* ========== Scrollbar (Webkit) ========== */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--gray-300);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-400);
+}

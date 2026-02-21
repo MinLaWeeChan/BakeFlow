@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta property="fb:app_id" content="1199015768743989" />
+    <title>BakeFlow - Saved Orders</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Shared BakeFlow CSS (matches order form) -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/hero.css">
+    <link rel="stylesheet" href="/css/saved-orders.css">
+    <link rel="stylesheet" href="/css/cart-bar.css">
+    <link rel="stylesheet" href="/css/sheets.css">
+    <link rel="stylesheet" href="/css/components.css">
+    
+    <!-- Messenger Extensions SDK -->
+    <script>
+        (function(d, s, id){
+            var js, fjs = d.getElementsByTagName(s)[0];
+            if (d.getElementById(id)) {return;}
+            js = d.createElement(s); js.id = id;
+            js.src = "https://connect.facebook.net/en_US/messenger.Extensions.js";
+            fjs.parentNode.insertBefore(js, fjs);
+        }(document, 'script', 'Messenger'));
+        window.extAsyncInit = function() {
+            MessengerExtensions.getSupportedFeatures(function success(result) {
+                console.log('✅ Messenger Extensions initialized:', result.supported_features);
+            }, function error(err) {
+                console.log('❌ Messenger Extensions error:', err);
+            });
+            try {
+                var appIdMeta = document.querySelector('meta[property="fb:app_id"]');
+                var appId = appIdMeta ? appIdMeta.getAttribute('content') : '';
+                if (appId && MessengerExtensions.getContext) {
+                    MessengerExtensions.getContext(appId, function success(context) {
+                        if (context && context.psid) {
+                            localStorage.setItem('bf_psid', context.psid);
+                        }
+                    }, function error(err) {
+                        console.log('❌ Messenger Extensions getContext error:', err);
+                    });
+                }
+            } catch (e) {}
+        };
+    </script>
+    
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        :root {
+            /* Keep small page-level overrides minimal; primary palette comes from /css/variables.css */
+            --danger: var(--primary);
+        }
+
+        /* Saved Orders hero nav (match order-form vibe) */
+        .hero-topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: var(--space-md);
+        }
+
+        .hero-icon-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: var(--radius);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.14);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255, 255, 255, 0.95);
+            transition: all var(--transition-fast);
+            backdrop-filter: blur(6px);
+        }
+
+        .hero-icon-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hero-icon-btn svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .hero-neworder {
+            height: 40px;
+            padding: 0 14px;
+            border-radius: var(--radius-full);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.14);
+            color: rgba(255, 255, 255, 0.95);
+            font-weight: 700;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all var(--transition-fast);
+            backdrop-filter: blur(6px);
+        }
+
+        .hero-neworder:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .hero-neworder svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Header */
+        .header {
+            background: #fff;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 16px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-inner {
+            max-width: var(--content-max-width);
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .back-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 1px solid var(--gray-200);
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .back-btn:hover {
+            background: var(--gray-50);
+            border-color: var(--gray-300);
+        }
+        .header-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--gray-900);
+        }
+        .header-subtitle {
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+        .new-order-btn {
+            height: 40px;
+            padding: 0 16px;
+            border-radius: 10px;
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .new-order-btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        /* Container */
+        .container {
+            max-width: var(--content-max-width);
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Stats row */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #fff;
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--gray-100);
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--gray-900);
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--gray-500);
+            margin-top: 2px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Filter tabs */
+        .filter-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+        .filter-btn {
+            height: 36px;
+            padding: 0 14px;
+            border-radius: 999px;
+            border: 1px solid var(--gray-200);
+            background: #fff;
+            color: var(--gray-600);
+            font-weight: 600;
+            font-size: 13px;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .filter-btn:hover {
+            border-color: var(--gray-300);
+            background: var(--gray-50);
+        }
+        .filter-btn.active {
+            background: var(--primary);
+            color: #fff;
+            border-color: var(--primary);
+        }
+        .filter-btn .badge {
+            background: var(--gray-200);
+            color: var(--gray-600);
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 999px;
+        }
+        .filter-btn.active .badge {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+
+        /* Order cards */
+        .orders-list {
+            display: grid;
+            gap: 12px;
+        }
+        .order-card {
+            background: #fff;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            border: 1px solid var(--gray-100);
+            overflow: hidden;
+            transition: all 0.15s ease;
+        }
+        .order-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+        .order-main {
+            padding: 16px;
+            display: flex;
+            gap: 14px;
+        }
+        .order-thumbs {
+            display: flex;
+            gap: -8px;
+        }
+        .order-thumb {
+            width: 52px;
+            height: 52px;
+            border-radius: 10px;
+            object-fit: cover;
+            background: var(--gray-100);
+            border: 2px solid #fff;
+            box-shadow: var(--shadow-sm);
+        }
+        .order-thumb:not(:first-child) {
+            margin-left: -16px;
+        }
+        .order-thumb-more {
+            width: 52px;
+            height: 52px;
+            border-radius: 10px;
+            background: var(--gray-100);
+            border: 2px solid #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 13px;
+            color: var(--gray-500);
+            margin-left: -16px;
+        }
+        .order-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .order-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .order-name {
+            font-weight: 700;
+            font-size: 16px;
+            color: var(--gray-900);
+            line-height: 1.3;
+        }
+        .order-tags {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .order-tag {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 999px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .order-tag.personal { background: var(--primary-light); color: var(--primary-dark); }
+        .order-tag.work { background: var(--warning-light); color: var(--gray-800); }
+        .order-tag.event { background: var(--accent-light); color: var(--accent); }
+        .order-tag.recurring { background: var(--success-light); color: var(--success); }
+        .order-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 8px;
+            font-size: 13px;
+            color: var(--gray-500);
+        }
+        .order-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .order-meta svg {
+            width: 14px;
+            height: 14px;
+        }
+        .order-price {
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--primary);
+            white-space: nowrap;
+        }
+        .order-actions {
+            display: flex;
+            border-top: 1px solid var(--gray-100);
+        }
+        .order-action {
+            flex: 1;
+            height: 48px;
+            border: none;
+            background: transparent;
+            font-weight: 600;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            color: var(--gray-600);
+        }
+        .order-action:not(:last-child) {
+            border-right: 1px solid var(--gray-100);
+        }
+        .order-action:hover {
+            background: var(--gray-50);
+        }
+        .order-action.primary {
+            color: var(--primary);
+            font-weight: 700;
+        }
+        .order-action.primary:hover {
+            background: var(--primary-light);
+        }
+        .order-action.danger:hover {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+        }
+        .order-action svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .empty-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--gray-100);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+        }
+        .empty-icon svg {
+            width: 36px;
+            height: 36px;
+            color: var(--gray-400);
+        }
+        .empty-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+        .empty-desc {
+            font-size: 14px;
+            color: var(--gray-500);
+            max-width: 280px;
+            margin: 0 auto 20px;
+            line-height: 1.5;
+        }
+        .empty-cta {
+            height: 48px;
+            padding: 0 24px;
+            border-radius: var(--radius);
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+            font-size: 15px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .empty-cta:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        /* Sheet/Modal */
+        .sheet-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            display: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 200;
+        }
+        .sheet-backdrop.active {
+            display: block;
+            opacity: 1;
+        }
+        .sheet {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: none;
+            z-index: 201;
+        }
+        .sheet.active {
+            display: block;
+        }
+        .sheet-box {
+            max-width: 480px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.15);
+            padding: 20px;
+            padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .sheet.active .sheet-box {
+            transform: translateY(0);
+        }
+        .sheet-handle {
+            width: 36px;
+            height: 4px;
+            background: var(--gray-300);
+            border-radius: 999px;
+            margin: 0 auto 16px;
+        }
+        .sheet-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--gray-900);
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        /* Reorder confirmation */
+        .reorder-items {
+            max-height: 240px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+        }
+        .reorder-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .reorder-item:last-child {
+            border-bottom: none;
+        }
+        .reorder-item-thumb {
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            object-fit: cover;
+            background: var(--gray-100);
+        }
+        .reorder-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .reorder-item-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--gray-900);
+        }
+        .reorder-item-qty-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 6px;
+        }
+        .reorder-item-qty {
+            font-size: 13px;
+            color: var(--gray-500);
+            min-width: 30px;
+            text-align: center;
+            font-weight: 600;
+        }
+        .qty-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+            color: var(--gray-700);
+            transition: all 0.2s;
+        }
+        .qty-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: rgba(218, 101, 50, 0.05);
+        }
+        .qty-btn:active {
+            transform: scale(0.95);
+        }
+        .reorder-item-price {
+            font-weight: 700;
+            font-size: 15px;
+            color: var(--gray-900);
+        }
+        .reorder-item-unavailable {
+            opacity: 0.7;
+            background: #fff5f5;
+            border-radius: 8px;
+            padding: 8px;
+            margin: -8px;
+        }
+        .reorder-item-unavailable .reorder-item-name {
+            text-decoration: line-through;
+            color: var(--gray-500);
+        }
+        .unavailable-badge {
+            display: inline-block;
+            background: #fee2e2;
+            color: #dc2626;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            text-decoration: none;
+        }
+        .replacement-section {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--gray-200);
+        }
+        .replacement-label {
+            font-size: 11px;
+            color: var(--gray-500);
+            margin-bottom: 4px;
+        }
+        .replacement-select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 13px;
+            background: #fff;
+            color: var(--gray-900);
+            cursor: pointer;
+        }
+        .replacement-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .remove-item-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-top: 6px;
+            padding: 4px 8px;
+            border: none;
+            background: transparent;
+            color: var(--gray-500);
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .remove-item-btn:hover {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        .custom-note-section {
+            margin-top: 6px;
+        }
+        .custom-note-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: var(--primary);
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 2px 0;
+        }
+        .custom-note-toggle:hover {
+            text-decoration: underline;
+        }
+        .custom-note-input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        .custom-note-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .custom-note-input::placeholder {
+            color: var(--gray-400);
+        }
+        .price-change {
+            font-size: 12px;
+            color: var(--warning);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .reorder-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-top: 1px solid var(--gray-200);
+            margin-bottom: 16px;
+        }
+        .reorder-total-label {
+            font-size: 14px;
+            color: var(--gray-600);
+        }
+        .reorder-total-value {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--gray-900);
+        }
+        .reorder-btn {
+            width: 100%;
+            height: 56px;
+            border-radius: var(--radius);
+            border: none;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .reorder-btn:hover {
+            background: #1d4ed8;
+        }
+        .reorder-btn:active {
+            transform: scale(0.98);
+        }
+        .reorder-btn.loading {
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        /* Delete confirmation */
+        .delete-confirm {
+            text-align: center;
+        }
+        .delete-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: #fef2f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+        }
+        .delete-icon svg {
+            width: 28px;
+            height: 28px;
+            color: var(--danger);
+        }
+        .delete-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--gray-900);
+            margin-bottom: 8px;
+        }
+        .delete-desc {
+            font-size: 14px;
+            color: var(--gray-500);
+            margin-bottom: 20px;
+        }
+        .delete-btns {
+            display: flex;
+            gap: 12px;
+        }
+        .delete-btns button {
+            flex: 1;
+            height: 48px;
+            border-radius: var(--radius);
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .delete-cancel {
+            border: 1px solid var(--gray-200);
+            background: #fff;
+            color: var(--gray-700);
+        }
+        .delete-cancel:hover {
+            background: var(--gray-50);
+        }
+        .delete-yes {
+            border: none;
+            background: var(--danger);
+            color: #fff;
+        }
+        .delete-yes:hover {
+            background: #b91c1c;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: var(--gray-900);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 14px;
+            box-shadow: var(--shadow-lg);
+            display: none;
+            opacity: 0;
+            transition: all 0.2s ease;
+            z-index: 300;
+        }
+        .toast.show {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .stats-row {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 8px;
+            }
+            .stat-card {
+                padding: 12px;
+            }
+            .stat-value {
+                font-size: 20px;
+            }
+            .order-main {
+                flex-direction: column;
+            }
+            .order-header {
+                flex-direction: column;
+                gap: 4px;
+            }
+            .order-price {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Hero Header (matches order form) -->
+    <div class="hero">
+        <div class="hero-content">
+            <div class="hero-topbar">
+                <button class="hero-icon-btn" type="button" onclick="goBack()" aria-label="Back">
+                    <i data-lucide="arrow-left"></i>
+                </button>
+                <button class="hero-neworder" type="button" onclick="goToOrderForm()" aria-label="New Order">
+                    <i data-lucide="plus"></i>
+                    <span>New Order</span>
+                </button>
+            </div>
+            <div class="hero-badge">
+                <i data-lucide="bookmark"></i>
+                <span>Saved orders</span>
+            </div>
+            <h1>BakeFlow</h1>
+            <p class="hero-subtitle">Reorder your favorites instantly</p>
+        </div>
+    </div>
+
+    <div class="container" style="margin-top: -8px; position: relative; z-index: 1;">
+        <!-- Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label">Saved</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statRecurring">0</div>
+                <div class="stat-label">Recurring</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statThisMonth">0</div>
+                <div class="stat-label">Used</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-row">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="personal"><i data-lucide="user" style="width:14px;height:14px;"></i> Personal</button>
+            <button class="filter-btn" data-filter="work"><i data-lucide="briefcase" style="width:14px;height:14px;"></i> Work</button>
+            <button class="filter-btn" data-filter="event"><i data-lucide="calendar" style="width:14px;height:14px;"></i> Event</button>
+            <button class="filter-btn" data-filter="recurring"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Recurring</button>
+        </div>
+
+        <!-- Orders list -->
+        <div id="ordersList" class="orders-list"></div>
+
+        <!-- Empty state -->
+        <div id="emptyState" class="empty-state" style="display:none;">
+            <div class="empty-icon">
+                <i data-lucide="bookmark"></i>
+            </div>
+            <div class="empty-title">No saved orders yet</div>
+            <div class="empty-desc">Save your favorite orders for quick reordering anytime. It's fast and convenient!</div>
+            <button class="empty-cta" onclick="goToOrderForm()">
+                <i data-lucide="plus"></i>
+                <span>Create your first order</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Sheet backdrop -->
+    <div id="sheetBackdrop" class="sheet-backdrop"></div>
+
+    <!-- Reorder confirmation sheet -->
+    <div id="reorderSheet" class="sheet">
+        <div class="sheet-box">
+            <div class="sheet-handle"></div>
+            <div class="sheet-title">Reorder</div>
+            <div id="reorderWarning" class="unavailable-warning" style="display:none;background:#fef3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-bottom:12px;font-size:13px;color:#856404;">
+                <i data-lucide="alert-triangle" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px;"></i>
+                <span id="reorderWarningText">Some items are no longer available. You can replace them or remove from order.</span>
+            </div>
+            <div id="reorderItems" class="reorder-items"></div>
+            <div class="reorder-total">
+                <span class="reorder-total-label">Total</span>
+                <span class="reorder-total-value" id="reorderTotal">$0.00</span>
+            </div>
+            <button class="reorder-btn" id="reorderConfirm">
+                <i data-lucide="shopping-cart"></i>
+                <span>Add to Cart & Checkout</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Delete confirmation sheet -->
+    <div id="deleteSheet" class="sheet">
+        <div class="sheet-box">
+            <div class="sheet-handle"></div>
+            <div class="delete-confirm">
+                <div class="delete-icon">
+                    <i data-lucide="trash-2"></i>
+                </div>
+                <div class="delete-title">Delete this order?</div>
+                <div class="delete-desc" id="deleteDesc">This will permanently remove "Order Name" from your saved orders.</div>
+                <div class="delete-btns">
+                    <button class="delete-cancel" onclick="closeSheets()">Cancel</button>
+                    <button class="delete-yes" id="deleteConfirm">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        let products = [];
+        let savedOrders = [];
+        let currentFilter = 'all';
+        let selectedOrderIdx = null;
+
+        function getToken() {
+            return new URLSearchParams(window.location.search).get('t') || '';
+        }
+
+        function getUserId() {
+            const params = new URLSearchParams(window.location.search);
+            const userId = params.get('user_id');
+            if (userId) return userId;
+            const tok = getToken();
+            if (tok) return `t_${tok.slice(0, 16)}`;
+            return 'guest';
+        }
+
+        async function init() {
+            // Load products from API
+            try {
+                const res = await fetch('/api/products?limit=100');
+                const data = await res.json();
+                products = Array.isArray(data.products) ? data.products : [];
+            } catch (e) {
+                console.log('Failed to load products', e);
+                products = [];
+            }
+
+            await loadSavedOrders();
+            renderOrders();
+            updateStats();
+            setupFilters();
+
+            if (window.lucide && window.lucide.createIcons) {
+                window.lucide.createIcons();
+            }
+        }
+
+        async function loadSavedOrders() {
+            const tok = getToken();
+            if (tok) {
+                try {
+                    const res = await fetch(`/api/me/saved-orders?t=${encodeURIComponent(tok)}`);
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const data = await res.json();
+                    const list = Array.isArray(data.saved_orders) ? data.saved_orders : [];
+
+                    savedOrders = list.map(so => {
+                        const items = Array.isArray(so.items) ? so.items : [];
+                        const normalized = items.map(it => {
+                            const pid = it.product_id != null ? it.product_id : (it.id != null ? it.id : null);
+                            const qty = Number(it.qty);
+                            const q = Number.isFinite(qty) && qty > 0 ? qty : 1;
+                            const price = Number(it.price);
+                            const p = pid != null ? getProductById(pid) : null;
+                            return {
+                                id: pid,
+                                qty: q,
+                                price: Number.isFinite(price) && price >= 0 ? price : (p ? Number(p.price) || 0 : 0),
+                                name: it.name || (p ? p.name : ''),
+                                image: it.image_url || (p && p.image_url ? p.image_url : '')
+                            };
+                        }).filter(x => x.id != null);
+
+                        return {
+                            id: so.id,
+                            name: so.name || 'Saved order',
+                            note: so.note || '',
+                            tags: Array.isArray(so.tags) ? so.tags : [],
+                            items: normalized,
+                            created_at: so.created_at || new Date().toISOString(),
+                            last_used: so.last_used_at || null
+                        };
+                    });
+                    return;
+                } catch (e) {
+                    console.log('Failed to load saved orders from API, falling back:', e);
+                }
+            }
+
+            const key = `saved_orders_${getUserId()}`;
+            savedOrders = JSON.parse(localStorage.getItem(key) || '[]');
+        }
+
+        function saveSavedOrders() {
+            // If we're in token-mode, server is source of truth.
+            if (getToken()) return;
+            const key = `saved_orders_${getUserId()}`;
+            localStorage.setItem(key, JSON.stringify(savedOrders));
+        }
+
+        function updateStats() {
+            document.getElementById('statTotal').textContent = savedOrders.length;
+            const recurring = savedOrders.filter(o => o.tags && o.tags.includes('recurring')).length;
+            document.getElementById('statRecurring').textContent = recurring;
+            // Count orders used this month
+            const now = new Date();
+            const thisMonth = savedOrders.filter(o => {
+                if (!o.last_used) return false;
+                const d = new Date(o.last_used);
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+            }).length;
+            document.getElementById('statThisMonth').textContent = thisMonth;
+        }
+
+        function setupFilters() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentFilter = btn.dataset.filter;
+                    renderOrders();
+                });
+            });
+        }
+
+        function getProductById(id) {
+            return products.find(p => p.id == id);
+        }
+
+        function getItemProductId(it) {
+            if (!it) return null;
+            if (it.id != null) return it.id;
+            if (it.product_id != null) return it.product_id;
+            if (it.productId != null) return it.productId;
+            return null;
+        }
+
+        function getItemQty(it) {
+            const q = it && (it.qty != null ? it.qty : it.quantity);
+            const n = Number(q);
+            return Number.isFinite(n) && n > 0 ? n : 1;
+        }
+
+        function getProductForItem(it) {
+            const pid = getItemProductId(it);
+            if (pid != null) {
+                const byId = getProductById(pid);
+                if (byId) return byId;
+            }
+            const n = (it && it.name ? String(it.name) : '').trim().toLowerCase();
+            if (n) {
+                const byName = products.find(p => (p.name || '').trim().toLowerCase() === n);
+                if (byName) return byName;
+            }
+            return null;
+        }
+
+        function getItemUnitPrice(it) {
+            if (!it) return 0;
+            const candidate = it.price != null ? it.price : (it.unit_price != null ? it.unit_price : it.original_price);
+            const n = Number(candidate);
+            if (Number.isFinite(n) && n >= 0) return n;
+
+            const p = getProductForItem(it);
+            const pn = p ? Number(p.price) : NaN;
+            return Number.isFinite(pn) && pn >= 0 ? pn : 0;
+        }
+
+        function getItemImage(it) {
+            const p = getProductForItem(it);
+            if (p && p.image_url) return p.image_url;
+            if (it && it.image) return it.image;
+            return 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=100&h=100&fit=crop';
+        }
+
+        function getItemDisplayName(it) {
+            const p = getProductForItem(it);
+            if (p && p.name) return p.name;
+            if (it && it.name) return it.name;
+            const pid = getItemProductId(it);
+            return pid != null ? `Item #${pid}` : 'Item';
+        }
+
+        function normalizeItemsForOrderForm(items) {
+            const arr = Array.isArray(items) ? items : [];
+            return arr.map(it => {
+                const pid = getItemProductId(it);
+                const p = getProductForItem(it);
+                // Only include available items
+                if (!p) return null;
+                const qty = getItemQty(it);
+                const price = getItemUnitPrice(it);
+                const name = it && it.name ? it.name : getItemDisplayName(it);
+                const image = it && it.image ? it.image : getItemImage(it);
+                return { id: pid, qty, price, name, image };
+            }).filter(it => it != null && it.id != null);
+        }
+
+        function formatPrice(price) {
+            return '$' + Number(price).toFixed(2);
+        }
+
+        function timeAgo(dateStr) {
+            const now = new Date();
+            const date = new Date(dateStr);
+            const diff = Math.floor((now - date) / 1000);
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+            if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+            return date.toLocaleDateString();
+        }
+
+        function renderOrders() {
+            const list = document.getElementById('ordersList');
+            const empty = document.getElementById('emptyState');
+
+            let filtered = savedOrders;
+            if (currentFilter !== 'all') {
+                filtered = savedOrders.filter(o => o.tags && o.tags.includes(currentFilter));
+            }
+
+            if (filtered.length === 0) {
+                list.innerHTML = '';
+                empty.style.display = 'block';
+                if (window.lucide) window.lucide.createIcons();
+                return;
+            }
+
+            empty.style.display = 'none';
+
+            list.innerHTML = filtered.map((order, idx) => {
+                const items = order.items || [];
+                const total = items.reduce((sum, it) => sum + (getItemUnitPrice(it) * getItemQty(it)), 0);
+                const itemCount = items.reduce((sum, it) => sum + getItemQty(it), 0);
+
+                // Thumbnails (max 3)
+                const thumbs = items.slice(0, 3).map(it => {
+                    const img = getItemImage(it);
+                    return `<img class="order-thumb" src="${img}" alt="">`;
+                }).join('');
+                const moreCount = items.length - 3;
+                const moreThumb = moreCount > 0 ? `<div class="order-thumb-more">+${moreCount}</div>` : '';
+
+                // Tags
+                const tags = (order.tags || []).map(t => `<span class="order-tag ${t}">${t}</span>`).join('');
+
+                const realIdx = savedOrders.indexOf(order);
+
+                return `
+                    <div class="order-card">
+                        <div class="order-main">
+                            <div class="order-thumbs">
+                                ${thumbs}${moreThumb}
+                            </div>
+                            <div class="order-content">
+                                <div class="order-header">
+                                    <div>
+                                        <div class="order-name">${escapeHtml(order.name)}</div>
+                                        ${order.note ? `<div style="font-size:12px;color:var(--gray-500);margin-top:2px;">${escapeHtml(order.note)}</div>` : ''}
+                                    </div>
+                                    <div class="order-price">${formatPrice(total)}</div>
+                                </div>
+                                <div class="order-tags">${tags}</div>
+                                <div class="order-meta">
+                                    <div class="order-meta-item">
+                                        <i data-lucide="shopping-bag"></i>
+                                        <span>${itemCount} item${itemCount !== 1 ? 's' : ''}</span>
+                                    </div>
+                                    <div class="order-meta-item">
+                                        <i data-lucide="clock"></i>
+                                        <span>${timeAgo(order.created_at)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="order-actions">
+                            <button class="order-action primary" onclick="openReorder(${realIdx})">
+                                <i data-lucide="rotate-ccw"></i>
+                                <span>Reorder</span>
+                            </button>
+                            <button class="order-action" onclick="editOrder(${realIdx})">
+                                <i data-lucide="pencil"></i>
+                                <span>Edit</span>
+                            </button>
+                            <button class="order-action" onclick="scheduleOrder(${realIdx})">
+                                <i data-lucide="calendar"></i>
+                                <span>Schedule</span>
+                            </button>
+                            <button class="order-action danger" onclick="confirmDelete(${realIdx})">
+                                <i data-lucide="trash-2"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function openSheet(id) {
+            document.getElementById('sheetBackdrop').classList.add('active');
+            document.getElementById(id).classList.add('active');
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function closeSheets() {
+            document.getElementById('sheetBackdrop').classList.remove('active');
+            document.querySelectorAll('.sheet').forEach(s => s.classList.remove('active'));
+        }
+
+        document.getElementById('sheetBackdrop').addEventListener('click', closeSheets);
+
+        function showToast(msg, type = '') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (type ? ' ' + type : '');
+            setTimeout(() => { t.classList.remove('show'); }, 2000);
+        }
+
+        // Reorder state for tracking replacements and notes
+        let reorderState = {
+            items: [],
+            replacements: {},  // originalIdx -> replacement product id
+            removedItems: {},  // originalIdx -> true
+            customNotes: {}    // originalIdx -> note string
+        };
+
+        // Reorder
+        function openReorder(idx) {
+            selectedOrderIdx = idx;
+            const order = savedOrders[idx];
+            const items = order.items || [];
+
+            // Reset reorder state
+            reorderState = {
+                items: items.slice(),
+                replacements: {},
+                removedItems: {},
+                customNotes: {}
+            };
+
+            renderReorderItems();
+            openSheet('reorderSheet');
+        }
+
+        function renderReorderItems() {
+            const items = reorderState.items;
+            let total = 0;
+            let html = '';
+            const unavailableItems = [];
+            
+            items.forEach((it, idx) => {
+                // Check if item was removed
+                if (reorderState.removedItems[idx]) return;
+
+                // Check if item has a replacement
+                const replacementId = reorderState.replacements[idx];
+                let p, pid, available, price, img, name;
+                
+                if (replacementId) {
+                    // Using replacement product
+                    p = getProductById(replacementId);
+                    pid = replacementId;
+                    available = true;
+                    price = p ? Number(p.price) : 0;
+                    img = p && p.image_url ? p.image_url : getItemImage(it);
+                    name = p ? p.name : 'Replacement';
+                } else {
+                    // Original item
+                    p = getProductForItem(it);
+                    pid = getItemProductId(it);
+                    available = !!p;
+                    price = getItemUnitPrice(it);
+                    img = getItemImage(it);
+                    name = getItemDisplayName(it);
+                }
+
+                const qty = getItemQty(it);
+                const lineTotal = price * qty;
+                
+                if (available) {
+                    total += lineTotal;
+                } else {
+                    unavailableItems.push({ name, idx });
+                }
+
+                const original = it && it.original_price != null ? Number(it.original_price) : NaN;
+                const current = p ? Number(p.price) : NaN;
+                const priceChanged = !replacementId && Number.isFinite(original) && Number.isFinite(current) && original !== current;
+                
+                const customNote = reorderState.customNotes[idx] || '';
+                const hasNote = customNote.length > 0;
+
+                if (available) {
+                    // Available item
+                    html += `
+                        <div class="reorder-item" data-idx="${idx}">
+                            <img class="reorder-item-thumb" src="${img}" alt="">
+                            <div class="reorder-item-info">
+                                <div class="reorder-item-name">${escapeHtml(name)}</div>
+                                <div class="reorder-item-qty-control">
+                                    <button class="qty-btn minus" onclick="changeReorderItemQty(${idx}, -1)">
+                                        <i data-lucide="minus" style="width:14px;height:14px;"></i>
+                                    </button>
+                                    <span class="reorder-item-qty">${qty}</span>
+                                    <button class="qty-btn plus" onclick="changeReorderItemQty(${idx}, 1)">
+                                        <i data-lucide="plus" style="width:14px;height:14px;"></i>
+                                    </button>
+                                </div>
+                                ${priceChanged ? `<div class="price-change"><i data-lucide="alert-triangle" style="width:12px;height:12px;"></i> Price changed</div>` : ''}
+                                ${hasNote ? `<div style="font-size:11px;color:var(--primary);margin-top:2px;"><i data-lucide="message-square" style="width:10px;height:10px;display:inline;"></i> ${escapeHtml(customNote)}</div>` : ''}
+                                <div class="custom-note-section">
+                                    <button class="custom-note-toggle" onclick="toggleCustomNote(${idx})">
+                                        <i data-lucide="edit-3" style="width:10px;height:10px;"></i>
+                                        ${hasNote ? 'Edit note' : 'Add note (flavor, etc.)'}
+                                    </button>
+                                    <input type="text" class="custom-note-input" id="note-${idx}" 
+                                           placeholder="e.g., Chocolate flavor, no nuts..." 
+                                           value="${escapeHtml(customNote)}"
+                                           style="display:none;"
+                                           onchange="updateCustomNote(${idx}, this.value)"
+                                           onblur="hideNoteInput(${idx})">
+                                </div>
+                            </div>
+                            <div class="reorder-item-price">${formatPrice(lineTotal)}</div>
+                        </div>
+                    `;
+                } else {
+                    // Unavailable item - show replacement options
+                    const replacementOptions = getReplacementOptions(it);
+                    html += `
+                        <div class="reorder-item reorder-item-unavailable" data-idx="${idx}">
+                            <img class="reorder-item-thumb" src="${img}" alt="" style="opacity:0.5;">
+                            <div class="reorder-item-info">
+                                <div class="reorder-item-name">
+                                    ${escapeHtml(name)}
+                                    <span class="unavailable-badge">Unavailable</span>
+                                </div>
+                                <div class="reorder-item-qty">Qty: ${qty}</div>
+                                <div class="replacement-section">
+                                    <div class="replacement-label">Replace with:</div>
+                                    <select class="replacement-select" onchange="setReplacement(${idx}, this.value)">
+                                        <option value="">— Select replacement —</option>
+                                        ${replacementOptions.map(rp => `<option value="${rp.id}">${escapeHtml(rp.name)} ($${rp.price.toFixed(2)})</option>`).join('')}
+                                    </select>
+                                    <button class="remove-item-btn" onclick="removeItem(${idx})">
+                                        <i data-lucide="x" style="width:10px;height:10px;"></i>
+                                        Remove from order
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="reorder-item-price">—</div>
+                        </div>
+                    `;
+                }
+            });
+
+            // Check if all items are removed
+            const activeItems = items.filter((_, idx) => !reorderState.removedItems[idx]);
+            if (activeItems.length === 0) {
+                html = `<div style="text-align:center;padding:20px;color:var(--gray-500);">
+                    <i data-lucide="shopping-bag" style="width:32px;height:32px;margin-bottom:8px;opacity:0.5;"></i>
+                    <p>No items in order</p>
+                </div>`;
+            }
+
+            document.getElementById('reorderItems').innerHTML = html;
+            document.getElementById('reorderTotal').textContent = formatPrice(total);
+            
+            // Show/hide unavailable warning
+            const warningEl = document.getElementById('reorderWarning');
+            if (unavailableItems.length > 0) {
+                warningEl.style.display = 'block';
+            } else {
+                warningEl.style.display = 'none';
+            }
+            
+            // Update confirm button state
+            const confirmBtn = document.getElementById('reorderConfirm');
+            const hasAvailableItems = items.some((it, idx) => {
+                if (reorderState.removedItems[idx]) return false;
+                if (reorderState.replacements[idx]) return true;
+                return !!getProductForItem(it);
+            });
+            confirmBtn.disabled = !hasAvailableItems;
+            confirmBtn.style.opacity = hasAvailableItems ? '1' : '0.5';
+            
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function getReplacementOptions(unavailableItem) {
+            // Return available products as replacement options
+            // Could be smarter by filtering by category or similar items
+            return products.filter(p => p.id != null).slice(0, 20);
+        }
+
+        function setReplacement(idx, productId) {
+            if (productId) {
+                reorderState.replacements[idx] = parseInt(productId);
+                delete reorderState.removedItems[idx];
+            } else {
+                delete reorderState.replacements[idx];
+            }
+            renderReorderItems();
+        }
+
+        function removeItem(idx) {
+            reorderState.removedItems[idx] = true;
+            delete reorderState.replacements[idx];
+            renderReorderItems();
+        }
+
+        function toggleCustomNote(idx) {
+            const input = document.getElementById(`note-${idx}`);
+            if (input) {
+                if (input.style.display === 'none') {
+                    input.style.display = 'block';
+                    input.focus();
+                } else {
+                    input.style.display = 'none';
+                }
+            }
+        }
+
+        function hideNoteInput(idx) {
+            setTimeout(() => {
+                const input = document.getElementById(`note-${idx}`);
+                if (input) input.style.display = 'none';
+            }, 200);
+        }
+
+        function changeReorderItemQty(idx, delta) {
+            const item = reorderState.items[idx];
+            if (!item) return;
+            
+            const currentQty = getItemQty(item);
+            const newQty = Math.max(0, currentQty + delta);
+            
+            // If quantity reaches 0, remove the item
+            if (newQty === 0) {
+                reorderState.removedItems[idx] = true;
+                delete reorderState.replacements[idx];
+            } else {
+                // Update the item quantity
+                delete reorderState.removedItems[idx];
+                if (item.qty !== undefined) {
+                    item.qty = newQty;
+                } else if (item.quantity !== undefined) {
+                    item.quantity = newQty;
+                }
+            }
+            
+            // Re-render to update totals and display
+            renderReorderItems();
+        }
+
+        function updateCustomNote(idx, note) {
+            reorderState.customNotes[idx] = note.trim();
+            renderReorderItems();
+        }
+
+        document.getElementById('reorderConfirm').addEventListener('click', function() {
+            const btn = this;
+            if (btn.disabled) return;
+            
+            btn.classList.add('loading');
+            btn.innerHTML = '<span>Checking stock...</span>';
+
+            // Build items for stock validation
+            const itemsToValidate = [];
+            reorderState.items.forEach((it, idx) => {
+                // Skip removed items
+                if (reorderState.removedItems[idx]) return;
+                
+                const qty = getItemQty(it);
+                const replacementId = reorderState.replacements[idx];
+                const productId = replacementId || getItemProductId(it);
+                
+                if (productId) {
+                    itemsToValidate.push({
+                        product_id: productId,
+                        quantity: qty
+                    });
+                }
+            });
+
+            if (itemsToValidate.length === 0) {
+                showToast('No items to add to cart');
+                btn.classList.remove('loading');
+                btn.innerHTML = '<i data-lucide="shopping-cart"></i><span>Add to Cart & Checkout</span>';
+                return;
+            }
+
+            // Validate stock before proceeding
+            fetch('/api/stock/validate-cart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: itemsToValidate })
+            })
+            .then(res => res.json())
+            .then(validation => {
+                btn.classList.remove('loading');
+                btn.innerHTML = '<i data-lucide="shopping-cart"></i><span>Add to Cart & Checkout</span>';
+
+                if (!validation.valid) {
+                    // Some items are unavailable
+                    const unavailableItems = validation.items?.filter(i => !i.is_available) || [];
+                    if (unavailableItems.length > 0) {
+                        const itemMessages = unavailableItems.map(i => {
+                            const product = getProductById(i.product_id);
+                            const productName = product ? product.name : `Product #${i.product_id}`;
+                            return `${productName}: ${i.message}`;
+                        });
+                        showToast('Some items are no longer available:\n' + itemMessages.join('\n'), 'error');
+                    } else {
+                        showToast(validation.message || 'Unable to validate cart availability', 'error');
+                    }
+                    return;
+                }
+
+                // Stock validation passed, proceed with adding to cart
+                setTimeout(() => {
+                    const order = savedOrders[selectedOrderIdx];
+                    // Update last_used
+                    order.last_used = new Date().toISOString();
+                    saveSavedOrders();
+
+                    // Build cart items with replacements and notes
+                    const cartItems = [];
+                    reorderState.items.forEach((it, idx) => {
+                        // Skip removed items
+                        if (reorderState.removedItems[idx]) return;
+                        
+                        const qty = getItemQty(it);
+                        const customNote = reorderState.customNotes[idx] || '';
+                        
+                        // Check for replacement
+                        const replacementId = reorderState.replacements[idx];
+                        if (replacementId) {
+                            const p = getProductById(replacementId);
+                            if (p) {
+                                cartItems.push({
+                                    id: p.id,
+                                    qty: qty,
+                                    price: Number(p.price) || 0,
+                                    name: p.name,
+                                    image: p.image_url || '',
+                                    note: customNote
+                                });
+                            }
+                        } else {
+                            // Original item - only if available
+                            const p = getProductForItem(it);
+                            if (p) {
+                                cartItems.push({
+                                    id: p.id,
+                                    qty: qty,
+                                    price: Number(p.price) || 0,
+                                    name: p.name,
+                                    image: p.image_url || '',
+                                    note: customNote
+                                });
+                            }
+                        }
+                    });
+
+                    // Save cart to localStorage and redirect
+                    const userId = getUserId();
+                    const tok = getToken();
+                    const cartKey = tok ? `pending_reorder_t_${tok}` : `pending_reorder_${userId}`;
+                    localStorage.setItem(cartKey, JSON.stringify(cartItems));
+                    
+                    // Save custom notes separately if any exist
+                    const notesKey = tok ? `pending_notes_t_${tok}` : `pending_notes_${userId}`;
+                    const notes = {};
+                    cartItems.forEach(item => {
+                        if (item.note) {
+                            notes[item.id] = item.note;
+                        }
+                    });
+                    if (Object.keys(notes).length > 0) {
+                        localStorage.setItem(notesKey, JSON.stringify(notes));
+                    }
+
+                    // Redirect to order form
+                    const qs = new URLSearchParams();
+                    // Preserve original user_id param (if any) for backward-compat
+                    const originalUserId = new URLSearchParams(window.location.search).get('user_id') || '';
+                    if (originalUserId) qs.set('user_id', originalUserId);
+                    if (tok) qs.set('t', tok);
+                    qs.set('reorder', '1');
+                    const url = `order-form.html?${qs.toString()}`;
+                    window.location.href = url;
+                }, 400);
+            })
+            .catch(err => {
+                console.error('Stock validation error:', err);
+                btn.classList.remove('loading');
+                btn.innerHTML = '<i data-lucide="shopping-cart"></i><span>Add to Cart & Checkout</span>';
+                showToast('Unable to check item availability. Please try again.', 'error');
+            });
+        });
+
+        // Edit
+        function editOrder(idx) {
+            const order = savedOrders[idx];
+            // Save items to cart and go to order form for editing
+            const userId = getUserId();
+            const tok = getToken();
+            const cartKey = tok ? `pending_reorder_t_${tok}` : `pending_reorder_${userId}`;
+            localStorage.setItem(cartKey, JSON.stringify(normalizeItemsForOrderForm(order.items)));
+            localStorage.setItem('editing_order_idx', idx);
+            const qs = new URLSearchParams();
+            const originalUserId = new URLSearchParams(window.location.search).get('user_id') || '';
+            if (originalUserId) qs.set('user_id', originalUserId);
+            if (tok) qs.set('t', tok);
+            qs.set('edit', '1');
+            window.location.href = `order-form.html?${qs.toString()}`;
+        }
+
+        // Schedule
+        function scheduleOrder(idx) {
+            const order = savedOrders[idx];
+            const userId = getUserId();
+            const tok = getToken();
+            const cartKey = tok ? `pending_reorder_t_${tok}` : `pending_reorder_${userId}`;
+            localStorage.setItem(cartKey, JSON.stringify(normalizeItemsForOrderForm(order.items)));
+            const qs = new URLSearchParams();
+            const originalUserId = new URLSearchParams(window.location.search).get('user_id') || '';
+            if (originalUserId) qs.set('user_id', originalUserId);
+            if (tok) qs.set('t', tok);
+            qs.set('schedule', '1');
+            window.location.href = `order-form.html?${qs.toString()}`;
+        }
+
+        // Delete
+        function confirmDelete(idx) {
+            selectedOrderIdx = idx;
+            const order = savedOrders[idx];
+            document.getElementById('deleteDesc').textContent = `This will permanently remove "${order.name}" from your saved orders.`;
+            openSheet('deleteSheet');
+        }
+
+        document.getElementById('deleteConfirm').addEventListener('click', function() {
+            const tok = getToken();
+            const order = savedOrders[selectedOrderIdx];
+            if (!order) return;
+
+            const doLocalDelete = () => {
+                savedOrders.splice(selectedOrderIdx, 1);
+                saveSavedOrders();
+                closeSheets();
+                renderOrders();
+                updateStats();
+                showToast('Order deleted', 'success');
+            };
+
+            if (!tok) {
+                doLocalDelete();
+                return;
+            }
+
+            fetch(`/api/me/saved-orders/${encodeURIComponent(order.id)}?t=${encodeURIComponent(tok)}`, {
+                method: 'DELETE'
+            })
+            .then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json().catch(() => ({}));
+            })
+            .then(() => {
+                doLocalDelete();
+            })
+            .catch(err => {
+                console.log('Failed to delete saved order via API', err);
+                showToast('Failed to delete order');
+            });
+        });
+
+        // Navigation
+        function goBack() {
+            const tok = getToken();
+            const originalUserId = new URLSearchParams(window.location.search).get('user_id') || '';
+            const qs = new URLSearchParams();
+            if (originalUserId) qs.set('user_id', originalUserId);
+            if (tok) qs.set('t', tok);
+            window.location.href = `order-form.html${qs.toString() ? ('?' + qs.toString()) : ''}`;
+        }
+
+        function goToOrderForm() {
+            goBack();
+        }
+
+        // Init
+        init();
+    </script>
+</body>
+</html>
